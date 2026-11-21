@@ -4,6 +4,7 @@
 """
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,7 +22,8 @@ from backend.skeptic.skeptic import evidence_verdict
 
 
 def setUpModule():
-    codegen.MODE = "direct"  # tests never call the real managed agent unless they mock it
+    codegen.MODE = "direct"  # tests never call the real managed agents unless they mock them
+    os.environ["AUDIT_AGENT"] = "0"
 
 
 def prices(n=900, seed=3, drift=0.0005, vol=0.03):
@@ -266,6 +268,45 @@ class BacktestAndJudgeTests(unittest.TestCase):
         with mock.patch.object(codegen, "write_code", side_effect=AssertionError("Neon called")):
             out = codegen.code_and_positions(RULES, prices(400), "1d", [{"fast": "20"}], save_dir=folder)
         self.assertTrue(out["reused"])
+
+    def birth_with_audit(self, audit_behaviour):
+        from backend.skeptic import audit as auditor
+        edge = {**SkepticTests.carbon(None, "Real Edge"), "color": "green"}
+        kwargs = {"side_effect": audit_behaviour} if isinstance(audit_behaviour, Exception) else {"return_value": audit_behaviour}
+        with mock.patch.dict(os.environ, {"AUDIT_AGENT": "1"}), \
+             mock.patch.object(birth, "load_prices", return_value=(prices(900), "1d")), \
+             mock.patch.object(codegen, "DATA_DIR", Path(tempfile.mkdtemp())), \
+             mock.patch.object(codegen, "write_code", return_value=HONEST), \
+             mock.patch.object(birth, "judge", return_value=edge), \
+             mock.patch.object(auditor, "audit", **kwargs) as audit_call:
+            record, _ = birth.backtest_and_judge(RULES, lambda s, d="": None)
+        return record, audit_call
+
+    def test_passing_audit_keeps_the_verdict(self):
+        record, call = self.birth_with_audit({"numbers_match": True, "lookahead_found": False, "notes": "ok"})
+        self.assertEqual(call.call_count, 1)
+        self.assertEqual(record["verdict"], "Real Edge")
+        self.assertTrue(record["audit"]["numbers_match"])
+
+    def test_failed_audit_caps_the_verdict(self):
+        for finding in [{"numbers_match": True, "lookahead_found": True}, {"numbers_match": False, "lookahead_found": False}]:
+            record, _ = self.birth_with_audit(finding)
+            self.assertEqual((record["verdict"], record["color"]), ("Lucky", "gold"))
+            self.assertIn("auditor", record["verdict_reason"])
+
+    def test_audit_that_crashes_never_blocks_a_birth(self):
+        record, _ = self.birth_with_audit(TimeoutError("too slow"))
+        self.assertEqual(record["verdict"], "Real Edge")
+        self.assertEqual(record["audit"]["status"], "unavailable")
+
+    def test_expected_numbers_for_the_auditor(self):
+        from backend.skeptic import audit as auditor
+        df = prices(600)
+        exp = auditor.expected_numbers(HONEST, df, {"fast": "20"})
+        pos, _ = codegen.run_code(HONEST, df, [{"fast": "20"}])
+        r = run_backtest(df, pos[0])
+        self.assertEqual(exp, {"final_balance": round(r["final_balance"], 2), "closed_trades": r["n_trades"],
+                               "max_drawdown_pct": round(r["max_drawdown"], 2)})
 
     def test_untestable_skips_the_backtest(self):
         rules = {**RULES, "testable": False, "untestable_reason": "Buy when it feels strong."}

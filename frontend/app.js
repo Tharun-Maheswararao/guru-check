@@ -65,7 +65,7 @@ function setNav(which) {
   if (current) { $('#nav-room').href = `#/npc/${current}`; $('#nav-sim').href = `#/sim/${current}`; }
 }
 async function route() {
-  stopSim(); window.speechSynthesis?.cancel(); voiceAudio?.pause();
+  stopSim(); stopVoice();
   $('#birth').classList.add('hidden'); clearInterval($('#birth-tl')._t);
   const [, page, id] = location.hash.split('/');
   try {
@@ -95,7 +95,8 @@ async function renderLibrary() {
       <div class="nm">${esc(n.name).toUpperCase()}</div>
       <div class="ar">${esc(n.archetype || '')}</div>
       <span class="tag ${vClass(n.verdict)}">${esc(n.verdict || '').toUpperCase()}</span>
-      <div class="ret" style="color:${n.return_pct == null ? 'var(--muted)' : n.return_pct >= 0 ? 'var(--green)' : 'var(--red)'}">${n.return_pct == null ? 'N/A' : pct(Math.round(n.return_pct))}</div>
+      <div class="ret" title="${n.annual_return_pct == null ? '' : `Average yearly return (compound) over ${n.years} years. Total: ${pct(Math.round(n.return_pct))}`}"
+        style="color:${n.annual_return_pct == null ? 'var(--muted)' : n.annual_return_pct >= 0 ? 'var(--green)' : 'var(--red)'}">${n.annual_return_pct == null ? 'N/A' : pct(n.annual_return_pct) + '/YR'}</div>
       ${n.demo ? '<span class="demo">DEMO DATA</span>' : ''}
     </a>`).join('') || '<p class="empty">No NPCs yet. Paste a video to birth the first one.</p>'}
   </div>
@@ -230,15 +231,16 @@ async function renderRoom(id) {
     if (!q) return; $('#chips')?.classList.add('hidden'); addMsg('user', q); $('#q').value = '';
     const thinking = addMsg('npc', '…');
     try {
-      const { answer, offline } = await post(`/api/npcs/${id}/talk`, { question: q, history });
+      const { answer, offline, voice_chunks } = await post(`/api/npcs/${id}/talk`, { question: q, history });
       if (offline && !window._offlineNoted) {
         window._offlineNoted = true;
         addMsg('note', offline === 'no_key'
           ? 'Offline mode: this server has no GEMINI_API_KEY, so answers are simple templates from the saved numbers. Add the key to .env and restart.'
           : 'Gemini did not answer, so this reply is a simple template from the saved numbers.');
       }
+      await speakAnswer(id, answer, voice_chunks);  // waits until the voice starts (at most 6s)
       thinking.textContent = answer; $('#dlg').scrollTop = 1e6; history.push({ role: 'user', text: q }, { role: 'npc', text: answer });
-      setSay(answer); speak(answer, id);
+      setSay(answer);
     } catch (e) { thinking.textContent = 'Error: ' + e.message; }
   };
   $('#ask').onsubmit = e => { e.preventDefault(); ask($('#q').value.trim()); };
@@ -290,28 +292,49 @@ function setupMic(ask) {
   };
 }
 // The NPC speaks in its own Gemini voice; if that fails, the browser's voice takes over.
-let voiceAudio = null;
-async function speak(text, id) {
-  if (muted) return;
-  voiceAudio?.pause(); window.speechSynthesis?.cancel();
-  const npc = $('#npc');
-  if (id) {
-    try {
-      const r = await fetch(`/api/npcs/${id}/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-      if (r.ok) {
-        voiceAudio = new Audio(URL.createObjectURL(await r.blob()));
-        voiceAudio.onplay = () => npc?.classList.add('talking');
-        voiceAudio.onended = voiceAudio.onpause = () => npc?.classList.remove('talking');
-        await voiceAudio.play();
-        return;
-      }
-    } catch (e) { /* fall back to the browser voice */ }
-  }
-  if (!window.speechSynthesis) return;
-  const u = new SpeechSynthesisUtterance(text); u.rate = 1.05; u.pitch = 1.1;
+// The NPC speaks in its own Gemini voice. /talk already started making the audio in sentence chunks;
+// the text appears when the first chunk starts playing, so words and voice arrive together. If the
+// voice is muted, off, or slower than 6s, the text shows at once and the browser's voice reads it.
+let voiceAudio = null, voiceToken = 0;
+const fetchVoice = (id, text) => fetch(`/api/npcs/${id}/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
+  .then(r => (r.ok ? r.blob() : null)).catch(() => null);
+const within = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]);
+function stopVoice() {
+  voiceToken++; voiceAudio?.pause(); window.speechSynthesis?.cancel(); $('#npc')?.classList.remove('talking');
+}
+function playBlob(blob, token) {
+  return new Promise(done => {
+    if (token !== voiceToken) return done();
+    const npc = $('#npc');
+    voiceAudio = new Audio(URL.createObjectURL(blob));
+    voiceAudio.onplay = () => npc?.classList.add('talking');
+    voiceAudio.onended = voiceAudio.onpause = () => { npc?.classList.remove('talking'); done(); };
+    voiceAudio.play().catch(done);
+  });
+}
+function browserSpeak(text) {
+  if (muted || !window.speechSynthesis) return;
+  const npc = $('#npc'), u = new SpeechSynthesisUtterance(text); u.rate = 1.05; u.pitch = 1.1;
   u.onstart = () => npc?.classList.add('talking'); u.onend = () => npc?.classList.remove('talking');
   speechSynthesis.speak(u);
 }
+async function speakAnswer(id, text, chunks) {
+  stopVoice();
+  const token = voiceToken;
+  if (muted) return;
+  if (!id || !chunks || !chunks.length) { browserSpeak(text); return; }
+  const blobs = chunks.map(c => fetchVoice(id, c));  // all chunks in parallel; played in order
+  const first = await within(blobs[0], 6000);
+  if (!first || token !== voiceToken) { if (token === voiceToken) browserSpeak(text); return; }
+  (async () => {
+    for (const pending of blobs) {
+      const blob = await pending;
+      if (!blob || token !== voiceToken) return;
+      await playBlob(blob, token);
+    }
+  })();
+}
+function speak(text, id) { return speakAnswer(id, text, [text]); }
 
 // ---------- simulate ----------
 let sim = null;

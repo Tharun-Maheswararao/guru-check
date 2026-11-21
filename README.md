@@ -36,6 +36,7 @@ Each model has one job. Code computes every number the user sees.
 | Matcher | **Decisions API** | "Is this the same strategy as NPC X?" A video with the same strategy joins the existing NPC |
 | Backtester | Gemini 4 **Neon**, **managed agent** | The Antigravity managed agent runs on Neon in a Google-hosted sandbox. It writes the strategy code, runs our test script against real candles, and fixes the code until every check passes. We then re-verify it locally on the full history |
 | Random traders | plain code | 1,000 traders with the same trades, holding periods and costs, but random timing |
+| Auditor | Gemini 4 **Carbon**, **managed agent** | A second Antigravity managed agent, on Carbon in its own Google sandbox. It writes its own backtest from our engine's rules, recomputes the NPC's numbers, and tries to catch lookahead by scrambling future prices. A mismatch or lookahead caps the verdict at Lucky |
 | Skeptic | Gemini 4 **Carbon** | Reviews the code for lookahead bias, checks every guru claim against the evidence, and gives the verdict and personality. It may be stricter than the numbers, never kinder |
 | Question router | **Decisions API** | Sorts each question the user asks the NPC (performance, period, rules, video, ...) |
 | Talk | Gemini 4 **Hydrogen** | In-character answers using only numbers from the saved backtest |
@@ -101,7 +102,8 @@ takes about 2 to 5 minutes, or click a card to talk to an NPC and press **Simula
 | `.venv/bin/python -m eval.run_eval --baseline` | The 20-video evaluation |
 | `.venv/bin/python -m eval.npc_honesty` | Asks every NPC 5 number questions and checks each answer |
 | `.venv/bin/python -m unittest discover tests` | Offline tests with fake model calls |
-| `BACKTEST_AGENT=direct` | Use one direct Neon call instead of the managed agent (faster, no sandbox) |
+| `BACKTEST_AGENT=direct` | Use one direct Neon call instead of the Neon managed agent (faster, no sandbox) |
+| `AUDIT_AGENT=0` | Skip the Carbon auditor managed agent |
 | `PORTRAITS=0`, `GEMINI_VOICE=0` | Turn off portraits or Gemini voice |
 
 ## Repo layout

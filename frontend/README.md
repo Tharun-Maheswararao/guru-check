@@ -43,7 +43,12 @@ waits for Person 2's `backend/backtester/birth.py`. Until that exists, run with 
 - **Portraits.** New NPCs get a Gemini image (`gemini-nano-banana-2.1`) at birth, saved to
   `data/portraits/`. The prompt forbids resembling any real person. Backfill existing NPCs with
   `python -m backend.api.portrait`. Turn off with `PORTRAITS=0`; the pixel sprite is the fallback.
-- **Voice.** NPC answers are spoken by Gemini text to speech (`gemini-3.8-flash-tts`, one voice per
-  NPC color) through `POST /api/npcs/{id}/speak`, falling back to the browser voice. Turn off with
-  `GEMINI_VOICE=0`. Press `M` to mute. Talk uses `GEMINI_TALK_MODEL` (Hydrogen model id) and
-answers only from the saved numbers; without a key it uses template answers.
+- **Voice.** NPC answers are spoken by Gemini text to speech (`gemini-3.8-flash-lite-tts`, one voice
+  per NPC color), falling back to the browser voice. Turn it off with `GEMINI_VOICE=0`.
+  - **The audio starts early.** `/talk` starts making the audio as soon as the answer exists, split
+    into the first sentence and the rest. The UI shows the text the moment the voice starts, so the
+    two arrive together, with at most a 6 second wait before the text appears anyway.
+  - Press `M` to mute.
+
+Talk uses `GEMINI_TALK_MODEL` (Hydrogen model id) and answers only from the saved numbers; without a
+key it uses template answers.

@@ -46,7 +46,7 @@ def model_settings(name: str, default_model: str) -> ModelSettings:
 HYDROGEN = model_settings("HYDROGEN", "gemini-4-hydrogen")
 DECISIONS = model_settings("DECISIONS", "gemini-decision-1")
 IMAGE = model_settings("IMAGE", "gemini-nano-banana-2.1")  # NPC portraits
-TTS = model_settings("TTS", "gemini-3.8-flash-tts")  # NPC voices
+TTS = model_settings("TTS", "gemini-3.8-flash-lite-tts")  # NPC voices (lite: about 1s faster to start speaking)
 
 DATA_DIR = ROOT / os.environ.get("DATA_DIR", "data")
 RUNS_DIR = DATA_DIR / "runs"

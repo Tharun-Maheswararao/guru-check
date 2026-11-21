@@ -32,7 +32,8 @@ added on the submission page.
    - Hydrogen wrote the rules, and they popped onto the video timeline.
    - The Neon managed agent wrote and tested the code in its Google sandbox until our lookahead checks passed.
    - 1,000 random traders raced it.
-   - Carbon judged the guru's claims.
+   - Carbon judged the guru's claims, while a second managed agent, the Carbon auditor, rebuilt the
+     backtest from scratch in its own sandbox and checked our numbers and the code for lookahead.
 
    Open the newborn NPC and ask it one question. (If it's still running, finish on the backup.)
 5. **Proof (25s).** "We tested on 20 videos we didn't build against, checked against the creators' own
@@ -51,8 +52,11 @@ added on the submission page.
   - Carbon can't give a kinder verdict than the evidence.
 - **Why crypto?** It's free, full-history public data. When a video trades stocks, forex or gold,
   the NPC says it was tested on Bitcoin instead.
-- **What does the managed agent add?** Neon runs code in its own sandbox and fixes it until our
-  checks pass, instead of guessing in one shot. We still re-verify locally on the full history.
+- **What do the two managed agents add?**
+  - **Neon** writes the strategy code and fixes it in its own sandbox until our checks pass, instead
+    of guessing in one shot.
+  - **The Carbon auditor** independently rebuilds the backtest in a separate sandbox and must
+    reproduce our numbers. If it can't, or it finds lookahead, the NPC can't claim an edge.
 - **What was built today?** All of it. See the README and the git history.
 
 Backup: if the network fails, start the server with `MOCK_BIRTH=1` and use already-born NPCs.

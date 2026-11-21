@@ -9,7 +9,9 @@ The NPC's headline numbers come from the median reading (not the best one), so a
 can't flatter it. birth_npc fills in the rule fields, draws the portrait and saves both files.
 """
 
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 import numpy as np
@@ -20,7 +22,8 @@ from backend.backtester.engine import (COST, START_CASH, build_readings, chart_i
                                        run_backtest)
 from backend.randoms.randoms import N_TRADERS, percentile_beaten, race
 from backend.skeptic.factors import factor_check
-from backend.skeptic.skeptic import evidence_verdict, judge
+from backend.skeptic import audit as auditor
+from backend.skeptic.skeptic import COLORS, RANK, evidence_verdict, judge
 
 MAX_CHART_TRADES = 600
 MIN_MAIN_TRADES = 5  # a reading needs this many trades to speak for the NPC, when any reading has them
@@ -142,7 +145,15 @@ def backtest_and_judge(rules: dict, on_step: Callable) -> tuple[dict, dict | Non
     main = results[main_k]
     factors = factor_check(df, main["bar_ret"])
 
-    on_step("judge", "Carbon is reviewing the code and checking the claims")
+    # Second managed agent: the Carbon auditor rechecks the backtest in its own sandbox while the
+    # Carbon judge reviews the code and claims. A failed or slow audit never blocks the birth.
+    audit_pool = ThreadPoolExecutor(max_workers=1)
+    audit_job = None
+    if os.environ.get("AUDIT_AGENT", "1") != "0":
+        audit_job = audit_pool.submit(auditor.audit, coded["code"], df, readings[main_k], market, timeframe)
+        on_step("judge", "Carbon is judging the claims while the Carbon auditor agent rechecks the backtest in its sandbox")
+    else:
+        on_step("judge", "Carbon is reviewing the code and checking the claims")
     cap = evidence_verdict(True, main, summary, factors, coded["report"].get("lookahead_free"))
     evidence = {
         "tested_on": market, "timeframe": timeframe, "period": [str(df.index[0].date()), str(df.index[-1].date())],
@@ -158,6 +169,17 @@ def backtest_and_judge(rules: dict, on_step: Callable) -> tuple[dict, dict | Non
         "code_problem_after_retries": coded["problem"],
     }
     j = judge(rules, evidence, coded["code"], cap)
+    audit_result = {"status": "off"}
+    if audit_job is not None:
+        try:
+            audit_result = audit_job.result(timeout=auditor.TIMEOUT_S + 30)
+        except Exception as e:
+            audit_result = {"status": "unavailable", "error": f"{type(e).__name__}: {e}"[:300]}
+    audit_pool.shutdown(wait=False)
+    problem = auditor.failed_audit(audit_result)
+    if problem and RANK.get(j["verdict"], 0) > RANK["Lucky"]:
+        j["verdict"], j["color"] = "Lucky", COLORS["Lucky"]
+        j["verdict_reason"] = f"{problem} {j['verdict_reason']}"
 
     if j["verdict"] == "Untestable":  # no reading ever traded: no numbers or replay to show
         return {"npc_id": f"{_slug(j['name'])}-{rules['strategy_id'][:6]}", "name": j["name"],
@@ -177,7 +199,7 @@ def backtest_and_judge(rules: dict, on_step: Callable) -> tuple[dict, dict | Non
         "readings": summary, "main_reading": readings[main_k], "factor_check": factors,
         "claim_checks": j["claim_checks"], "code_review": j["code_review"],
         "lookahead_free": coded["report"].get("lookahead_free"), "code_path": coded["code_path"],
-        "code_author": coded.get("author"),
+        "code_author": coded.get("author"), "audit": audit_result,
         "tested": {"market": market, "timeframe": timeframe, "start": evidence["period"][0],
                    "end": evidence["period"][1], "bars": len(df), "costs_per_trade_pct": 100 * COST},
         "trades_path": "",

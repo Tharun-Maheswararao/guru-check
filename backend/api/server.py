@@ -8,6 +8,7 @@
 
 import json
 import os
+from datetime import date
 import random
 import threading
 import time
@@ -21,6 +22,7 @@ from pydantic import BaseModel
 
 from backend.api.portrait import generate_portrait
 from backend.api.talk import talk as talk_to_npc
+from backend.api.voice import prefetch as voice_prefetch
 from backend.api.voice import speak
 from backend.npc_store import store
 
@@ -41,10 +43,38 @@ class TalkIn(BaseModel):
     history: list[dict] = []
 
 
+def tested_years(rec: dict) -> float | None:
+    """Length of the backtest in years, from the record's tested period or its trades file."""
+    tested = rec.get("tested") or {}
+    start, end = tested.get("start"), tested.get("end")
+    if not (start and end) and rec.get("trades_path"):
+        trades = store.get_trades(rec["npc_id"]) or {}
+        dates = trades.get("dates") or []
+        start, end = (dates[0], dates[-1]) if dates else (None, None)
+    if not (start and end):
+        return None
+    days = (date.fromisoformat(str(end)[:10]) - date.fromisoformat(str(start)[:10])).days
+    return days / 365.25 if days > 0 else None
+
+
+def annual_return_pct(rec: dict) -> float | None:
+    """Compound average yearly return: the steady yearly rate that turns $10,000 into the final balance."""
+    final = (rec.get("results") or {}).get("final_balance")
+    years = tested_years(rec)
+    if final is None or not years:
+        return None
+    if final <= 0:
+        return -100.0
+    return round(100 * ((final / 10000) ** (1 / years) - 1), 1)
+
+
 def _card(rec: dict) -> dict:
     r = rec.get("results") or {}
+    years = tested_years(rec)
     return {k: rec.get(k) for k in ("npc_id", "name", "color", "archetype", "verdict", "portrait_path", "demo")} | {
         "return_pct": round(100 * (r["final_balance"] / 10000 - 1), 1) if r.get("final_balance") else None,
+        "annual_return_pct": annual_return_pct(rec),
+        "years": round(years, 1) if years else None,
         "video_title": (rec.get("source_videos") or [{}])[0].get("title"),
     }
 
@@ -75,7 +105,10 @@ def talk(npc_id: str, body: TalkIn):
     rec = store.get_npc(npc_id)
     if not rec:
         raise HTTPException(404, "No such NPC")
-    return talk_to_npc(rec, store.get_trades(npc_id), body.question, body.history)
+    out = talk_to_npc(rec, store.get_trades(npc_id), body.question, body.history)
+    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_VOICE") != "0":
+        out["voice_chunks"] = voice_prefetch(out["answer"], rec)  # voice starts before the browser asks
+    return out
 
 
 @app.post("/api/birth")
