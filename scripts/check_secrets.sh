@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-pattern='AIza[0-9A-Za-z_-]{35}'
+pattern='AIza[0-9A-Za-z_-]{35}|AQ\.[0-9A-Za-z_-]{40,}'
 found=0
 
 # Staged and tracked files, plus untracked files that aren't ignored.
@@ -13,7 +13,7 @@ if git grep -nE "$pattern" -- . >/dev/null 2>&1 || \
    git diff --cached -U0 | grep -qE "$pattern" || \
    { git ls-files --others --exclude-standard -z | xargs -0 grep -lE "$pattern" 2>/dev/null | grep -q .; }; then
   echo "Possible Google API key in files git would commit:"
-  git grep -nE "$pattern" -- . 2>/dev/null | sed -E "s/$pattern/AIza...REDACTED/g" || true
+  git grep -nE "$pattern" -- . 2>/dev/null | sed -E "s/$pattern/<REDACTED KEY>/g" || true
   git ls-files --others --exclude-standard -z | xargs -0 grep -lE "$pattern" 2>/dev/null || true
   found=1
 fi
