@@ -17,6 +17,11 @@ Video title: {title}
 
 {segments}
 
+Some videos review, compare or rank several different strategies. Never mix rules from
+different strategies into one. Pick the ONE strategy the video teaches most completely (it has an
+entry and an exit or stop loss), preferring the one the creator says they use or recommend, and
+extract only that strategy's rules, filters, vague terms and claims.
+
 Write the rules exactly as the video teaches them. Do not invent rules, numbers or indicators
 that are not in the video. Every rule and claim cites timestamp_s, the start time in seconds of
 the part it came from.
@@ -35,7 +40,8 @@ the part it came from.
   {{"text": "80 percent win rate", "timestamp_s": N}}. Leave out sponsor segments and ads, and
   results of other traders, products or services (e.g. a copy trading app's top trader).
 - testable: false if the entry or exit can't be turned into code even with the vague term meanings,
-  e.g. "buy when it feels strong", or if the video teaches no strategy. Then give untestable_reason
+  e.g. "buy when it feels strong", or if the video teaches no strategy, or if it only surveys
+  strategies without fully teaching any one of them. Then give untestable_reason
   in one sentence. Otherwise true and untestable_reason ""."""
 
 
