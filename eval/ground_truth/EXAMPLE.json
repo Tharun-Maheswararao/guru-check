@@ -1,0 +1,7 @@
+{
+  "source": "https://link-to-the-creator's-own-written-rules",
+  "entry": ["50 day SMA crosses above 200 day SMA"],
+  "exit": ["50 day SMA crosses below 200 day SMA"],
+  "stop_loss": [],
+  "filters": []
+}

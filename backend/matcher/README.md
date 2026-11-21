@@ -1,9 +1,17 @@
 # Matcher (Person 1)
 
-**Model:** Decisions API.
+**Model:** Gemini Decisions API.
 
-**Input:** a new strategy rules record plus the closest saved strategies from `npc_store/`.
-**Output:** either an existing `npc_id` (match score above about 90 percent, the link joins
-that NPC) or a signal to birth a new NPC.
+`match_link(url, store)` runs first, before any model call: a video already in the library opens its
+NPC right away.
 
-Same-link matching is a plain lookup and must always work, even if cross-video matching is cut.
+`match(rules, store)` runs after extraction and returns one of:
+
+| action | when | what the pipeline does |
+|---|---|---|
+| `join` (`same_rules`) | identical `strategy_id` already saved | adds the video to that strategy and NPC |
+| `join` (`same_strategy`) | Decisions API says "same strategy" at or above `MATCH_THRESHOLD` (0.9) for one of the 3 most similar saved strategies (all 3 compared in one request) | same |
+| `new` | otherwise | saves the strategy so Person 2 can backtest and birth an NPC |
+
+The result also carries `strategy_id`, `npc_id` (null if not born yet), `score` and the `candidates`
+it compared. Untestable strategies skip the Decisions comparison, since vague rules can't be compared.

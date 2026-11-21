@@ -57,13 +57,42 @@ guru-check/
 ## Setup
 
 ```bash
-cp .env.example .env   # then add your keys
+cp .env.example .env   # then add GEMINI_API_KEY from your own hackathon account
+uv venv .venv && uv pip install -r requirements.txt   # or: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 python3 scripts/download_prices.py            # BTC, ETH, SOL daily into data/prices/
 python3 scripts/download_prices.py --interval 1h
 ```
 
+Run Person 1's pipeline on one video (Watcher, Scanner, Extractor, Matcher). Output is cached in
+`data/runs/<video_id>/`, and new strategies are saved to `data/strategies/` for the Backtester:
+
+```bash
+.venv/bin/python -m backend.pipeline "https://www.youtube.com/watch?v=..."
+```
+
+Every model request is logged to `data/logs/llm_calls.jsonl`, and the pipeline prints how many it
+sent. A 20 minute video takes about 9 requests.
+
+Tests run offline with fake model calls:
+
+```bash
+.venv/bin/python -m unittest discover tests
+```
+
 All data is free and public and none of it goes in the repo. `data/`, `.env`, `*.csv` (except
 `eval/videos.csv`) and `*.parquet` are gitignored.
+
+## Hackathon account
+
+- **Never commit a key.** A key pushed to GitHub gets every key on the account shut down, and a
+  later commit deleting it doesn't help. Keys go in `.env`, which is gitignored. Before pushing, run
+  `bash scripts/check_secrets.sh`, or install it as a hook:
+  `ln -sf ../../scripts/check_secrets.sh .git/hooks/pre-commit`. If a key leaks, delete it at
+  aistudio.google.com/api-keys and make a new one.
+- **Keep request volume normal.** Thousands of requests can get the team disqualified, so model
+  calls are batched and each pipeline step is cached.
+- **429 errors** usually mean the spend cap was hit: raise it a little at aistudio.google.com/spend.
+- **The account is deleted the day after.** Push everything to GitHub before you leave.
 
 ## Rules
 
