@@ -1,0 +1,16 @@
+{
+  "source": "https://www.youtube.com/watch?v=7hzRuzmA_pg (video description)",
+  "entry": [
+    "Buy when the 2-period RSI closes at 5 or below.",
+    "Sell short when the 2-period RSI closes at 95 or above."
+  ],
+  "exit": [
+    "Close a long when price closes above the 5-period SMA. Close a short when price closes below it."
+  ],
+  "stop_loss": [
+    "No hard stop (following Connors). Risk 1% of capital per 1x ATR at entry."
+  ],
+  "filters": [
+    "200-period SMA trend filter: buys only when the close is above it, sells only when the close is below it."
+  ]
+}

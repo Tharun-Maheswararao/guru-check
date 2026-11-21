@@ -1,0 +1,14 @@
+{
+  "source": "https://www.youtube.com/shorts/1DVPvbubZa8 (video description)",
+  "entry": [
+    "In an uptrend (price above the 200-day MA), buy when the 2-day RSI drops under 10."
+  ],
+  "exit": [
+    "Sell when price closes above the 5-day MA."
+  ],
+  "stop_loss": [],
+  "filters": [
+    "Only trade above the 200-day MA.",
+    "S&P 500, history since 1927."
+  ]
+}

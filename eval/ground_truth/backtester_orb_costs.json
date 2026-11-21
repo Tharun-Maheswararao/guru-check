@@ -1,0 +1,18 @@
+{
+  "source": "https://www.youtube.com/watch?v=hWT7_RI5aXo (video description)",
+  "entry": [
+    "The opening range is the first 15 minutes (a 30-minute version was also tested).",
+    "The signal is the first 5-minute close beyond the range. Enter at the next bar's open."
+  ],
+  "exit": [
+    "Otherwise exit at 15:55. A variant exits at a 2R target."
+  ],
+  "stop_loss": [
+    "Stop at the other side of the opening range."
+  ],
+  "filters": [
+    "SPY, QQQ and IWM on 5-minute bars, regular hours only, January 2020 to September 2026.",
+    "One trade per fund per day. No overnight holds, no leverage.",
+    "Costs of 0.02% per side."
+  ]
+}

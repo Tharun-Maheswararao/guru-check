@@ -1,0 +1,19 @@
+{
+  "source": "https://www.tradingwithrayner.com/golden-cross/",
+  "entry": [
+    "Golden cross: go long when the 50 MA crosses above the 200 MA.",
+    "If the crossover entry would need a stop far from price, wait for a pullback to the moving averages before entering.",
+    "Death cross (short): after the 50 MA crosses below the 200 MA, wait for price to reject the level with a bearish candle."
+  ],
+  "exit": [
+    "Exit when the moving averages cross back the other way, or alternatively on a close back beyond the 200 MA."
+  ],
+  "stop_loss": [
+    "Long: stop below the previous lows. Short: stop above the previous highs (no fixed distance given)."
+  ],
+  "filters": [
+    "Avoid sustained ranging markets.",
+    "Optional confirmation: RSI above 50 supports a bullish signal.",
+    "Optional confirmation: MACD (12, 26, 9) line/signal crossover in the trade direction."
+  ]
+}

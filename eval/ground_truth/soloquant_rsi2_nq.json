@@ -1,0 +1,17 @@
+{
+  "source": "https://www.youtube.com/watch?v=dRrNRc_aUS4 (video description)",
+  "entry": [
+    "At the close, if the 2-bar RSI crosses below 30, buy one contract at the next open with a market order."
+  ],
+  "exit": [
+    "When the 2-bar RSI crosses back above 70, sell at the next open. There is no profit target."
+  ],
+  "stop_loss": [
+    "Stop at 2 ATR below the fill, where ATR is the average of the last 14 true ranges."
+  ],
+  "filters": [
+    "No trend filter.",
+    "Daily NQ futures bars, 2010 to 2026, long only.",
+    "Costs: $15 per round trip."
+  ]
+}

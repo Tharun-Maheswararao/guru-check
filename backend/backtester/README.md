@@ -1,47 +1,36 @@
 # Backtester (Person 2)
 
-**Model:** Gemini 4 Neon, managed agent. Writes strategy code in its sandbox and runs every
-meaning of the rules on full crypto history with costs.
+`birth.py: backtest_and_judge(rules, on_step) -> (npc_record, trades)` is Person 2's half of an NPC
+birth. `backend/pipeline.py: birth_npc` calls it after the Matcher, then fills in the rule fields,
+draws the portrait and saves the NPC.
 
-**Input:** new strategies in `data/strategies/<strategy_id>.json` (format: `schemas/strategy_rules.json`)
-and price files from `scripts/download_prices.py` in `data/prices/<market>_<timeframe>.csv`.
+## What happens
 
-- `timeframe` is `5m`, `1h` or `1d` and names the price file to load. Resample up if the rules need
-  15m or 4h candles. 5m files aren't downloaded by default:
-  `python3 scripts/download_prices.py --interval 5m` (about 15 minutes per coin; it resumes if stopped).
-- Strategies can trade long and short.
-- Use `strategy_id` exactly as saved in the file, and save the born NPC with the same id
-  (`Store().save_npc(record)` in `backend/npc_store/store.py`).
-- `strategy_name` is a short plain name you can use in logs; Person 3 can use it for the NPC.
-**Output:** results and trades used in `schemas/npc_record.json`.
+1. **backtest**
+   - **Readings.** `engine.build_readings` turns the vague terms into up to 6 readings of the rules: all first meanings, all second, all third, then random mixes.
+   - **Neon writes the code.** `codegen.py` has Gemini 4 Neon write one `generate_positions(df, reading)` with a branch for every meaning.
+   - **The sandbox runs it.** `sandbox_runner.py` runs the code in a separate Python process with no environment (no API keys) and a 5 minute limit. Only numpy, pandas, math and datetime can be imported, and there's no `open`, `eval` or `exec`.
+   - **Lookahead test.** Reading 0 is rerun on data cut off at six points. Every position, including the last one before the cut, must match the full run, which catches even a one-bar peek. If the code crashes, never trades or peeks, Neon gets the problem and one more try.
+   - **The engine counts the money.** `engine.run_backtest` holds each signal over the next bar, so a signal never trades its own bar. It charges 0.15% per side (0.10% fee + 0.05% slippage) and computes equity, trades, win rate, drawdown and buy and hold.
+2. **randoms**
+   - **1,000 random traders.** `backend/randoms/randoms.py` makes as many trades as each reading, with the same holding periods, long/short mix and costs. Only the timing is random.
+   - **Market check.** `backend/skeptic/factors.py` regresses daily returns on the market and on 30-day time-series momentum, both built from the same coin (the Kenneth French factors only cover US stocks).
+3. **judge**
+   - **Evidence verdict.** `skeptic.evidence_verdict` works out the best verdict the numbers allow:
+     - **Real Edge:** beats 90% or more of random traders in at least two thirds of the readings, and keeps at least 2% a year of alpha with t ≥ 1.5.
+     - **Just the Market:** beats 75% or more, but no alpha.
+     - **Lucky:** everything else, and any code that failed the lookahead test.
+   - **Carbon judges.** Gemini 4 Carbon reviews the code, checks every claim, writes the verdict reason and designs the fictional NPC: name, archetype and personality. It can be stricter than the evidence verdict, never kinder.
 
-## Handoff: how an NPC gets born
+The NPC speaks for the **median** reading, not the best, so one lucky setting can't flatter it.
+The record also keeps every reading's results, the factor check, claim checks, code review and the
+saved code (`data/code/<strategy_id>.py`).
 
-`birth_npc(url, on_step)` in `backend/pipeline.py` (what the web app calls) runs Watcher, Scanner,
-Extractor and Matcher, then calls **your** function:
+## Inputs and outputs
 
-```python
-# backend/backtester/birth.py
-def backtest_and_judge(rules: dict, on_step) -> tuple[dict, dict]:
-    on_step("backtest", "Neon agent is backtesting every meaning of the rules")
-    ...
-    on_step("randoms", "Racing 1,000 random traders")
-    ...
-    on_step("judge", "Carbon is judging the claims")
-    ...
-    return npc_record, trades
-```
-
-- `rules` is one record shaped like `schemas/strategy_rules.json`, already saved in `data/strategies/`.
-  Untestable strategies come through too (`testable: false`): skip the backtest, give the Untestable
-  verdict and personality.
-- `npc_record` is shaped like `schemas/npc_record.json`, plus the extra fields in
-  `frontend/README.md` (`color`, `archetype`, and `hold_final`, `share_random_better`, `n_trades` in
-  `results`). It needs a unique `npc_id`.
-- `trades` is shaped like `schemas/trades.json`.
-- Leave out `strategy_id`, `strategy_name`, `source_videos`, `market`, `rules_timeline` and
-  `untestable_reason`: `birth_npc` fills those from the rules. It also saves both files and reports
-  the `born` step, so don't save them yourself.
-
-Until `backend/backtester/birth.py` exists, a birth stops at the backtest step with a message saying so.
-Rehearse the UI with `MOCK_BIRTH=1` meanwhile.
+- **Prices:** `data/prices/<market>_<timeframe>.csv` from `scripts/download_prices.py`.
+  - A missing timeframe falls back to the next longer one (5m to 1h to 1d).
+  - 5m uses the most recent 400,000 bars, about 3.8 years, so a birth stays a few minutes.
+- **Record:** `schemas/npc_record.json` plus the fields in `frontend/README.md`, and `verdict_reason`, `readings`, `main_reading`, `factor_check`, `claim_checks`, `code_review`, `lookahead_free`, `tested` and `code_path`.
+- **Trades:** `schemas/trades.json`, with 1,500 chart points and at most 600 trade markers.
+- **Untestable rules** skip the backtest. Carbon still judges them and shapes the personality, and `results` is null.

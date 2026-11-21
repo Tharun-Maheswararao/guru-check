@@ -1,0 +1,14 @@
+{
+  "source": "https://tosindicators.com/research/golden-cross-trading-strategy-20-year-backtest-results",
+  "entry": [
+    "Buy when the 50-day SMA crosses above the 200-day SMA."
+  ],
+  "exit": [
+    "Sell when the 50-day SMA crosses below the 200-day SMA."
+  ],
+  "stop_loss": [],
+  "filters": [
+    "No additional filters or discretionary overrides.",
+    "S&P 500, daily bars, 2003 to 2023."
+  ]
+}

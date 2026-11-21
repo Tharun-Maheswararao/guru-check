@@ -1,0 +1,198 @@
+"""Offline tests for the backtester, sandbox, random traders and Skeptic, with fake model calls.
+
+    python -m unittest discover tests
+"""
+
+import json
+import unittest
+from unittest import mock
+
+import numpy as np
+import pandas as pd
+
+from backend.backtester import birth, codegen
+from backend.backtester.engine import START_CASH, build_readings, chart_index, run_backtest
+from backend.randoms.randoms import percentile_beaten, race
+from backend.skeptic import skeptic
+from backend.skeptic.factors import factor_check
+from backend.skeptic.skeptic import evidence_verdict
+
+
+def prices(n=900, seed=3, drift=0.0005, vol=0.03):
+    rng = np.random.default_rng(seed)
+    close = 100 * np.exp(np.cumsum(rng.normal(drift, vol, n)))
+    idx = pd.date_range("2020-01-01", periods=n, freq="D", tz="UTC")
+    return pd.DataFrame({"open": close, "high": close * 1.01, "low": close * 0.99, "close": close,
+                         "volume": 1.0}, index=idx)
+
+
+HONEST = '''def generate_positions(df, reading):
+    fast = df.close.rolling(int(reading.get("fast", "20"))).mean()
+    slow = df.close.rolling(100).mean()
+    return (fast > slow).astype(int).tolist()
+'''
+PEEK = '''def generate_positions(df, reading):
+    return (df.close.shift(-1) > df.close).astype(int).tolist()
+'''
+FORBIDDEN = '''import os
+def generate_positions(df, reading):
+    return [0] * len(df)
+'''
+
+RULES = {
+    "strategy_id": "a" * 40, "strategy_name": "MA cross", "market": {"stated": "BTC", "tested_on": "BTC-USD"},
+    "timeframe": "1d", "entry": [{"rule": "fast MA above slow", "timestamp_s": 10}],
+    "exit": [{"rule": "fast MA below slow", "timestamp_s": 20}], "stop_loss": [], "filters": [],
+    "vague_terms": [{"term": "fast", "meanings": ["10", "20", "30"]}],
+    "claims": [{"text": "never loses", "timestamp_s": 5}], "testable": True, "untestable_reason": None,
+    "source_videos": [{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}],
+}
+
+
+class EngineTests(unittest.TestCase):
+    def test_hand_checked_long_and_short(self):
+        df = pd.DataFrame({"close": [100, 100, 110, 121, 121, 100.0]})
+        r = run_backtest(df, np.array([0, 1, 1, 0, -1, 0], np.int8))
+        self.assertEqual([t["side"] for t in r["trades"]], [1, -1])
+        self.assertAlmostEqual(r["trades"][0]["pnl"], 1.21 * (1 - 0.0015) ** 2 - 1, places=6)
+        self.assertAlmostEqual(r["trades"][1]["pnl"], (1 + 21 / 121) * (1 - 0.0015) ** 2 - 1, places=6)
+        self.assertEqual(r["n_trades"], 2)
+        self.assertEqual(r["win_rate"], 100.0)
+
+    def test_signal_trades_next_bar_not_same_bar(self):
+        df = pd.DataFrame({"close": [100, 200.0]})
+        r = run_backtest(df, np.array([1, 1], np.int8))  # buy at close of bar 0, so bar 1's +100% counts
+        self.assertAlmostEqual(r["final_balance"], START_CASH * (1 - 0.0015) * 2, places=4)
+        r = run_backtest(df, np.array([0, 1], np.int8))  # signal on the last bar earns nothing
+        self.assertLess(r["final_balance"], START_CASH)
+
+    def test_readings(self):
+        self.assertEqual(build_readings([]), [{}])
+        self.assertEqual(len(build_readings(RULES["vague_terms"])), 3)
+        many = [{"term": t, "meanings": ["x", "y", "z"]} for t in "abcd"]
+        r = build_readings(many, seed="s")
+        self.assertEqual(len(r), 6)
+        self.assertEqual(r[0], {t: "x" for t in "abcd"})
+        self.assertEqual(len({tuple(x.values()) for x in r}), 6)
+
+
+class SandboxTests(unittest.TestCase):
+    def test_honest_code_runs_every_reading(self):
+        df = prices(400)
+        pos, rep = codegen.run_code(HONEST, df, [{"fast": "10"}, {"fast": "30"}])
+        self.assertTrue(rep["lookahead_free"])
+        self.assertIsNone(codegen.problem_with(pos, rep))
+        self.assertFalse(np.array_equal(pos[0], pos[1]))
+
+    def test_peeking_and_forbidden_imports_are_caught(self):
+        df = prices(400)
+        pos, rep = codegen.run_code(PEEK, df, [{}])
+        self.assertFalse(rep["lookahead_free"])
+        self.assertIn("future data", codegen.problem_with(pos, rep))
+        pos, rep = codegen.run_code(FORBIDDEN, df, [{}])
+        self.assertIn("not allowed", rep["load_error"])
+
+    def test_bad_code_gets_one_fix(self):
+        answers = [PEEK, HONEST]
+        with mock.patch.object(codegen, "write_code", side_effect=lambda *a, **k: answers.pop(0)) as w:
+            out = codegen.code_and_positions(RULES, prices(400), "1d", [{"fast": "20"}], save_dir="/tmp")
+        self.assertEqual(w.call_count, 2)
+        previous_code, problem = w.call_args_list[1].args[3]  # second try sees the first code and why it failed
+        self.assertEqual(previous_code, PEEK)
+        self.assertIn("future data", problem)
+        self.assertIsNone(out["problem"])
+
+
+class RandomsAndFactorsTests(unittest.TestCase):
+    def test_random_timing_sits_in_the_crowd(self):
+        df = prices(1500, seed=5)
+        pos = np.random.default_rng(2).integers(0, 2, len(df)).astype(np.int8)
+        r = run_backtest(df, pos)
+        rc = race(df.close.to_numpy(), r["trades"], chart_index(len(df)))
+        self.assertTrue(10 < percentile_beaten(r["final_balance"], rc["finals"]) < 90)
+        self.assertEqual(len(rc["band"]["p50"]), len(chart_index(len(df))))
+        self.assertTrue(np.all(rc["band"]["p10"] <= rc["band"]["p90"]))
+
+    def test_no_trades_means_flat_randoms(self):
+        df = prices(300)
+        r = run_backtest(df, np.zeros(len(df), np.int8))
+        rc = race(df.close.to_numpy(), r["trades"], chart_index(len(df)))
+        self.assertTrue(np.all(rc["finals"] == START_CASH))
+
+    def test_holding_the_market_is_all_beta(self):
+        df = prices(1200)
+        r = run_backtest(df, np.ones(len(df), np.int8))
+        f = factor_check(df, r["bar_ret"])
+        self.assertAlmostEqual(f["beta_market"], 1.0, places=1)
+        self.assertLess(abs(f["alpha_annual_pct"]), 2)
+
+
+class SkepticTests(unittest.TestCase):
+    def reading(self, pct):
+        return {"random_percentile": pct}
+
+    def test_evidence_verdicts(self):
+        main = {"trades_total": 10, "random_percentile": 95}
+        good_alpha = {"alpha_t": 2.5, "alpha_annual_pct": 8}
+        no_alpha = {"alpha_t": 0.4, "alpha_annual_pct": 3}
+        three_good = [self.reading(95)] * 3
+        self.assertEqual(evidence_verdict(True, main, three_good, good_alpha, True)[0], "Real Edge")
+        self.assertEqual(evidence_verdict(True, main, three_good, no_alpha, True)[0], "Just the Market")
+        self.assertEqual(evidence_verdict(True, main, [self.reading(95)] + [self.reading(20)] * 2, good_alpha, True)[0], "Lucky")
+        self.assertEqual(evidence_verdict(True, {**main, "random_percentile": 40}, three_good, good_alpha, True)[0], "Lucky")
+        self.assertEqual(evidence_verdict(True, main, three_good, good_alpha, False)[0], "Lucky")
+        self.assertEqual(evidence_verdict(True, {**main, "trades_total": 0}, three_good, good_alpha, True)[0], "Untestable")
+        self.assertEqual(evidence_verdict(False, None, [], None, None)[0], "Untestable")
+
+    def carbon(self, verdict):
+        return {"verdict": verdict, "verdict_reason": "Carbon says so", "name": "Test Tess",
+                "archetype": "The Tester", "personality": "Calm.", "claim_checks": [],
+                "code_review": {"lookahead_risk": "low", "matches_rules": True, "notes": ""}}
+
+    def test_carbon_can_be_stricter_but_never_kinder(self):
+        with mock.patch.object(skeptic.llm, "_retry", return_value=self.carbon("Real Edge")):
+            j = skeptic.judge(RULES, {}, "", ("Lucky", "numbers say lucky"))
+        self.assertEqual((j["verdict"], j["verdict_reason"], j["color"]), ("Lucky", "numbers say lucky", "gold"))
+        with mock.patch.object(skeptic.llm, "_retry", return_value=self.carbon("Lucky")):
+            j = skeptic.judge(RULES, {}, "", ("Real Edge", "numbers say edge"))
+        self.assertEqual(j["verdict"], "Lucky")
+
+    def test_carbon_failure_falls_back_to_the_numbers(self):
+        with mock.patch.object(skeptic.llm, "_retry", side_effect=RuntimeError("down")):
+            j = skeptic.judge(RULES, {}, "", ("Just the Market", "beta only"))
+        self.assertEqual(j["verdict"], "Just the Market")
+        self.assertEqual(j["name"], "Ma Cross")
+
+
+class BacktestAndJudgeTests(unittest.TestCase):
+    def test_full_backtest_with_fake_models(self):
+        steps = []
+        with mock.patch.object(birth, "load_prices", return_value=(prices(900), "1d")), \
+             mock.patch.object(codegen, "write_code", return_value=HONEST), \
+             mock.patch.object(skeptic.llm, "_retry", return_value=SkepticTests.carbon(None, "Lucky")):
+            record, trades = birth.backtest_and_judge(RULES, lambda s, d="": steps.append(s))
+        self.assertEqual(list(dict.fromkeys(steps)), ["backtest", "randoms", "judge"])
+        self.assertEqual(record["npc_id"], "test-tess-aaaaaa")
+        self.assertEqual(len(record["readings"]), 3)
+        for key in ["final_balance", "max_drawdown", "win_rate", "random_percentile", "share_random_better",
+                    "hold_final", "n_trades"]:
+            self.assertIn(key, record["results"])
+        self.assertTrue(record["lookahead_free"])
+        with open("schemas/trades.json") as f:
+            expected = set(json.load(f)) - {"_note"}
+        self.assertEqual(set(trades), expected)
+        n = len(trades["dates"])
+        self.assertTrue(all(len(trades[k]) == n for k in ["price", "equity", "hold"]))
+        self.assertTrue(all(0 <= t["i"] < n for t in trades["trades"]))
+
+    def test_untestable_skips_the_backtest(self):
+        rules = {**RULES, "testable": False, "untestable_reason": "Buy when it feels strong."}
+        with mock.patch.object(skeptic.llm, "_retry", return_value=SkepticTests.carbon(None, "Lucky")):
+            record, trades = birth.backtest_and_judge(rules, lambda s, d="": None)
+        self.assertEqual(record["verdict"], "Untestable")
+        self.assertIsNone(record["results"])
+        self.assertIsNone(trades)
+
+
+if __name__ == "__main__":
+    unittest.main()

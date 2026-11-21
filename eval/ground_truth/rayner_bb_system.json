@@ -1,0 +1,19 @@
+{
+  "source": "https://www.tradingwithrayner.com/bollinger-band-trading-system",
+  "entry": [
+    "Signal: the stock closes below the lower Bollinger Band (20, 2.5) while above its 200-day SMA.",
+    "Place a buy limit 3% below the last close, valid for one day only."
+  ],
+  "exit": [
+    "Sell at the next open after the 2-day RSI closes above 50.",
+    "Time stop: if not exited, sell at the open of day 11 (the fill day counts as day 1)."
+  ],
+  "stop_loss": [
+    "No price stop, only the time stop."
+  ],
+  "filters": [
+    "Russell 1000 stocks, daily chart.",
+    "When there are too many signals, rank by 100-day rate of change, strongest first.",
+    "20% of capital per stock, at most 5 positions."
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "source": "https://www.youtube.com/watch?v=ncJKep-6vU8 (Pine Script in video description)",
+  "entry": [
+    "Go long when the close crosses above the upper band, which is the highest prior close over (length - 1) bars.",
+    "Go short when the close crosses below the lower band, which is the lowest prior close over (length - 1) bars."
+  ],
+  "exit": [
+    "Reverse on the opposite signal (always in the market)."
+  ],
+  "stop_loss": [],
+  "filters": [
+    "Default length is 72. The strategy has a single parameter.",
+    "Crypto."
+  ]
+}

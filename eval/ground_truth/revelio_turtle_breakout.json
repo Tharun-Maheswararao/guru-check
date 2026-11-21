@@ -1,0 +1,17 @@
+{
+  "source": "https://www.tradingview.com/script/Hd9ebcRm-Turtle-Breakout-Revelio/",
+  "entry": [
+    "Long only: buy on a break above the highest high of the last 20 days."
+  ],
+  "exit": [
+    "Trailing exit at the lowest low of the last 10 days. Exit at whichever of the trailing level and the initial stop is higher."
+  ],
+  "stop_loss": [
+    "Initial stop at 2 ATR below entry, fixed for the trade, using a 20-day Wilder ATR."
+  ],
+  "filters": [
+    "Trading days run 17:00 to 17:00 New York, and bands and ATR use completed days only.",
+    "Optional day-trading mode: flat at 16:30 New York, re-enter from 18:00 if price is still above the stop.",
+    "No pyramiding."
+  ]
+}

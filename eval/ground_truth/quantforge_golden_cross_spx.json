@@ -1,0 +1,13 @@
+{
+  "source": "https://www.youtube.com/watch?v=J8WeCsmpm_w (video description)",
+  "entry": [
+    "Buy when the 50 SMA crosses above the 200 SMA."
+  ],
+  "exit": [
+    "Sell when the 50 SMA crosses below the 200 SMA."
+  ],
+  "stop_loss": [],
+  "filters": [
+    "S&P 500, about 7 years of data."
+  ]
+}

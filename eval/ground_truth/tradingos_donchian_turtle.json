@@ -1,0 +1,15 @@
+{
+  "source": "https://www.youtube.com/watch?v=dZYEch4UbjY (video description)",
+  "entry": [
+    "Enter on a 55-period (55-day high/low) Donchian breakout confirmed by volume."
+  ],
+  "exit": [
+    "Exit on a break of the opposite 20-period Donchian channel."
+  ],
+  "stop_loss": [],
+  "filters": [
+    "Risk 1% per trade, using ATR(14)-based position sizing.",
+    "At most 4 positions in one market and 12 in total across correlated markets.",
+    "Daily chart, long and short."
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "source": "https://tradingrush.net/i-risked-macd-trading-strategy-100-times-heres-what-happened/",
+  "entry": [
+    "Long: MACD line crosses above the signal line, the cross happens below the zero line, and price is above the 200 EMA.",
+    "Short: MACD line crosses below the signal line, the cross happens above the zero line, and price is below the 200 EMA."
+  ],
+  "exit": [
+    "Take profit at 1.5 times the risk."
+  ],
+  "stop_loss": [
+    "Long: stop below the pullback low (short is the mirror; no buffer is given)."
+  ],
+  "filters": [
+    "200 EMA trend filter: buys only above it, sells only below it.",
+    "MACD at default settings.",
+    "Skip trades whose signals are unclear.",
+    "Risk 1% per trade. The example uses a 30-minute chart (EUR/USD, then EUR/JPY)."
+  ]
+}

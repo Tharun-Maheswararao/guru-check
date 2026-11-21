@@ -1,0 +1,18 @@
+{
+  "source": "https://docs.google.com/document/d/1oxCXWcZzPHV-hTL20z6wl8bOgk-nj73vB0LjsjUio08/edit?usp=sharing",
+  "entry": [
+    "Long: the previous candle was bearish, closed below the lower band, and had RSI below 30; the current candle is bullish and closes back above the lower band.",
+    "Short: the previous candle was bullish, closed above the upper band, and had RSI above 70; the current candle is bearish and closes back below the upper band."
+  ],
+  "exit": [
+    "Take profit at 3 x ATR(14) from the entry close."
+  ],
+  "stop_loss": [
+    "Stop at 2 x ATR(14) from the entry close."
+  ],
+  "filters": [
+    "Bollinger Bands use a 20-period SMA with 2.0 standard deviations. RSI length is 14.",
+    "Optional filters are off by default: bandwidth above 0.3, a breakout filter, and a 50-candle maximum hold.",
+    "Stocks on 30-minute and daily charts."
+  ]
+}

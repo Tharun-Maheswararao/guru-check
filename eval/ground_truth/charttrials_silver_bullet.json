@@ -1,0 +1,20 @@
+{
+  "source": "https://www.youtube.com/watch?v=eNSZvTPvMu8 (video description, 'THE RULES (as coded)')",
+  "entry": [
+    "Only during 03:00-04:00, 10:00-11:00 or 14:00-15:00 New York time, and the setup must form inside the hour.",
+    "After a market structure shift toward the draw on liquidity, trade only the first fair value gap that forms and gets repriced inside the hour.",
+    "The gap must point at the draw. Enter with a limit at the edge of the gap, filled inside the hour."
+  ],
+  "exit": [
+    "One target for the whole position at the draw on liquidity (an untaken high or low). No partials, no breakeven.",
+    "Coded choice: close if not hit by 16:00 New York."
+  ],
+  "stop_loss": [
+    "Stop just beyond candle 1 of the fair value gap."
+  ],
+  "filters": [
+    "The draw must be at least 10 points (40 ticks) away for index futures.",
+    "Coded choices: the draw is the nearest untaken level of at least 10 points; a structure shift is a close beyond the last 2-bar fractal swing; any gap of at least 1 tick counts; cancel the limit if the target trades first; costs of 0.7 points per round trip.",
+    "NQ 1-minute data."
+  ]
+}

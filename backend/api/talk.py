@@ -35,6 +35,11 @@ def facts(record: dict, trades: dict | None) -> dict:
         "pct_random_traders_did_better": r.get("share_random_better"),
         "just_holding_final": r.get("hold_final"),
         "demo_data": bool(record.get("demo")),
+        "verdict_reason": record.get("verdict_reason"),
+        "claim_checks": record.get("claim_checks"),
+        "results_by_reading_of_vague_rules": record.get("readings"),
+        "tested": record.get("tested"),
+        "market_and_momentum_check": record.get("factor_check"),
     }
     if trades:
         pm = trades.get("pain_moment") or {}

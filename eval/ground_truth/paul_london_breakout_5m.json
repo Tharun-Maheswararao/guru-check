@@ -1,0 +1,16 @@
+{
+  "source": "https://www.youtube.com/watch?v=pLEvo2fBHbU (video description)",
+  "entry": [
+    "At the London session, mark breakout levels using simple market structure on the 5-minute chart.",
+    "Enter on the close of the breakout candle."
+  ],
+  "exit": [
+    "Target 1:1 to 1:1.5 risk-to-reward (set and forget)."
+  ],
+  "stop_loss": [
+    "Stop at the nearest swing high or low."
+  ],
+  "filters": [
+    "5-minute chart, London session, forex."
+  ]
+}
