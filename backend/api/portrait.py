@@ -32,10 +32,11 @@ def portrait_prompt(record: dict) -> str:
     mood = MOODS.get(record.get("verdict", ""), "curious")
     personality = " ".join(str(record.get("personality", "")).split())[:300]
     return (
-        f"16-bit pixel art head-and-shoulders portrait of {record.get('name', 'a trader')}, an invented "
-        f"trader character in a retro arcade game. Archetype: {record.get('archetype', 'trader')}. "
+        f"Anime key visual, waist-up portrait of {record.get('name', 'a trader')}, an invented trader "
+        f"character in an anime game. Archetype: {record.get('archetype', 'trader')}. "
         f"Personality: {personality}. Expression: {mood}. Main accent color {color} in the clothing. "
-        "Dark navy night city background with a few stars. Centered, facing the viewer, crisp pixels. "
+        "Cel shading, clean lineart, vibrant colors. Dark purple night city background with soft pink neon "
+        "bokeh. Centered, facing the viewer, head in the upper third of the image. "
         "This is a fictional person: do not resemble any real person, YouTuber, influencer or celebrity. "
         "No text, letters, numbers, logos or watermarks."
     )

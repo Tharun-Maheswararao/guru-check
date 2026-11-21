@@ -79,12 +79,12 @@ def main():
     for k, (nid, name, color, arch, verdict, edge, title, pers, tl) in enumerate(NPCS):
         tf, res = fake_trades_file(k + 3, edge)
         save_npc({"npc_id": nid, "name": name, "color": color, "archetype": arch, "personality": pers,
-                  "portrait_path": "", "strategy_id": nid, "verdict": verdict, "results": res, "demo": True,
+                  "portrait_path": f"frontend/art/{nid[5:]}.jpg", "strategy_id": nid, "verdict": verdict, "results": res, "demo": True,
                   "market": {"stated": "BTC", "tested_on": "BTC-USD"},
                   "source_videos": [{"url": f"https://www.youtube.com/watch?v=DEMO{k}", "title": title, "duration_s": 760}],
                   "rules_timeline": [{"kind": a, "rule": b, "timestamp_s": c} for a, b, c in tl]}, tf)
     save_npc({"npc_id": "demo-vague-vinny", "name": "Vague Vinny", "color": "violet", "archetype": "Talks in Vibes",
-              "personality": "Dreamy, speaks in metaphors.", "portrait_path": "", "strategy_id": "vinny",
+              "personality": "Dreamy, speaks in metaphors.", "portrait_path": "frontend/art/vague-vinny.jpg", "strategy_id": "vinny",
               "verdict": "Untestable", "results": None, "trades_path": "", "demo": True,
               "untestable_reason": "No rule can be written as code: entries depend on 'feeling the energy'.",
               "source_videos": [{"url": "https://www.youtube.com/watch?v=DEMO9", "title": "Trust the energy of the market", "duration_s": 610}],
