@@ -23,6 +23,7 @@ from backend.skeptic.factors import factor_check
 from backend.skeptic.skeptic import evidence_verdict, judge
 
 MAX_CHART_TRADES = 600
+MIN_MAIN_TRADES = 5  # a reading needs this many trades to speak for the NPC, when any reading has them
 
 
 def _slug(text: str) -> str:
@@ -86,6 +87,16 @@ def trades_file(df: pd.DataFrame, timeframe: str, result: dict, band: dict, chec
     }
 
 
+def choose_main(results: dict) -> int:
+    """The reading the NPC speaks for: the median (the lower one when even) among readings with at
+    least MIN_MAIN_TRADES trades, so one lucky setting can't speak for the strategy and a reading
+    with a trade or two can't either. Falls back to any reading that trades, then to all of them."""
+    trading = ([k for k in results if results[k]["trades_total"] >= MIN_MAIN_TRADES]
+               or [k for k in results if results[k]["trades_total"] > 0] or list(results))
+    ranked = sorted(trading, key=lambda k: results[k]["final_balance"])
+    return ranked[(len(ranked) - 1) // 2]
+
+
 def _untestable(rules: dict, reason: str, on_step: Callable, code: str = "") -> tuple[dict, None]:
     on_step("backtest", f"Nothing to backtest: {reason}")
     on_step("randoms", "Skipped: no trades to race")
@@ -127,9 +138,7 @@ def backtest_and_judge(rules: dict, on_step: Callable) -> tuple[dict, dict | Non
         summary.append({"reading": readings[k], "final_balance": round(r["final_balance"], 2),
                         "random_percentile": round(r["random_percentile"], 1), "n_trades": r["n_trades"],
                         "max_drawdown": round(r["max_drawdown"], 1)})
-    # The NPC is the median reading, so one lucky setting can't speak for the strategy.
-    ranked = sorted(results, key=lambda k: results[k]["final_balance"])
-    main_k = ranked[len(ranked) // 2]
+    main_k = choose_main(results)
     main = results[main_k]
     factors = factor_check(df, main["bar_ret"])
 
@@ -150,6 +159,12 @@ def backtest_and_judge(rules: dict, on_step: Callable) -> tuple[dict, dict | Non
     }
     j = judge(rules, evidence, coded["code"], cap)
 
+    if j["verdict"] == "Untestable":  # no reading ever traded: no numbers or replay to show
+        return {"npc_id": f"{_slug(j['name'])}-{rules['strategy_id'][:6]}", "name": j["name"],
+                "color": j["color"], "archetype": j["archetype"], "personality": j["personality"],
+                "portrait_path": "", "verdict": "Untestable", "verdict_reason": j["verdict_reason"],
+                "results": None, "trades_path": "", "readings": summary, "claim_checks": j["claim_checks"],
+                "code_review": j["code_review"], "code_path": coded["code_path"]}, None
     trades = trades_file(df, timeframe, main, races[main_k]["band"], checkpoints, rules)
     record = {
         "npc_id": f"{_slug(j['name'])}-{rules['strategy_id'][:6]}", "name": j["name"], "color": j["color"],

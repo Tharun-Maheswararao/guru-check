@@ -141,7 +141,18 @@ def problem_with(positions: list, report: dict) -> str | None:
 
 def code_and_positions(rules: dict, df: pd.DataFrame, timeframe: str, readings: list[dict],
                        attempts: int = 2, save_dir: Path | None = None) -> dict:
-    """Neon writes the code, the sandbox runs it, and Neon fixes it once if needed."""
+    """Neon writes the code, the sandbox runs it, and Neon fixes it once if needed.
+
+    Code saved by an earlier birth of the same strategy is reused if it still passes every check,
+    which saves a minute or two when a birth is retried.
+    """
+    save_dir = Path(save_dir or DATA_DIR / "code")
+    code_path = save_dir / f"{rules['strategy_id']}.py"
+    if code_path.exists():
+        positions, report = run_code(code_path.read_text(), df, readings)
+        if problem_with(positions, report) is None:
+            return {"code": code_path.read_text(), "code_path": str(code_path), "positions": positions,
+                    "report": report, "problem": None, "reused": True}
     code, positions, report, problem = "", [], {}, None
     for _ in range(attempts):
         code = write_code(rules, df, timeframe, (code, problem) if problem else None)
@@ -149,9 +160,7 @@ def code_and_positions(rules: dict, df: pd.DataFrame, timeframe: str, readings: 
         problem = problem_with(positions, report)
         if problem is None:
             break
-    save_dir = Path(save_dir or DATA_DIR / "code")
     save_dir.mkdir(parents=True, exist_ok=True)
-    code_path = save_dir / f"{rules['strategy_id']}.py"
     code_path.write_text(code)
     return {"code": code, "code_path": str(code_path), "positions": positions, "report": report,
             "problem": problem}

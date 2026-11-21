@@ -22,7 +22,11 @@ draws the portrait and saves the NPC.
      - **Lucky:** everything else, and any code that failed the lookahead test.
    - **Carbon judges.** Gemini 4 Carbon reviews the code, checks every claim, writes the verdict reason and designs the fictional NPC: name, archetype and personality. It can be stricter than the evidence verdict, never kinder.
 
-The NPC speaks for the **median** reading, not the best, so one lucky setting can't flatter it.
+The NPC speaks for the **median** reading (the lower one when even) among readings with at least 5
+trades, falling back to any reading that trades. So one lucky setting can't flatter it, and a
+reading with one or two trades or none can't speak for it. If
+no reading ever trades, the verdict is Untestable and `results` is null. Code saved by an earlier
+birth of the same strategy is reused if it still passes every check, which speeds up retries.
 The record also keeps every reading's results, the factor check, claim checks, code review and the
 saved code (`data/code/<strategy_id>.py`).
 

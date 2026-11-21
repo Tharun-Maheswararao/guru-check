@@ -4,7 +4,9 @@
 """
 
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
@@ -37,6 +39,12 @@ PEEK = '''def generate_positions(df, reading):
 FORBIDDEN = '''import os
 def generate_positions(df, reading):
     return [0] * len(df)
+'''
+
+ONLY_30_TRADES = '''def generate_positions(df, reading):
+    if reading["fast"] != "30":
+        return [0] * len(df)
+    return (df.close.rolling(30).mean() > df.close.rolling(100).mean()).astype(int).tolist()
 '''
 
 RULES = {
@@ -95,7 +103,8 @@ class SandboxTests(unittest.TestCase):
     def test_bad_code_gets_one_fix(self):
         answers = [PEEK, HONEST]
         with mock.patch.object(codegen, "write_code", side_effect=lambda *a, **k: answers.pop(0)) as w:
-            out = codegen.code_and_positions(RULES, prices(400), "1d", [{"fast": "20"}], save_dir="/tmp")
+            out = codegen.code_and_positions(RULES, prices(400), "1d", [{"fast": "20"}],
+                                              save_dir=tempfile.mkdtemp())
         self.assertEqual(w.call_count, 2)
         previous_code, problem = w.call_args_list[1].args[3]  # second try sees the first code and why it failed
         self.assertEqual(previous_code, PEEK)
@@ -168,6 +177,7 @@ class BacktestAndJudgeTests(unittest.TestCase):
     def test_full_backtest_with_fake_models(self):
         steps = []
         with mock.patch.object(birth, "load_prices", return_value=(prices(900), "1d")), \
+             mock.patch.object(codegen, "DATA_DIR", Path(tempfile.mkdtemp())), \
              mock.patch.object(codegen, "write_code", return_value=HONEST), \
              mock.patch.object(skeptic.llm, "_retry", return_value=SkepticTests.carbon(None, "Lucky")):
             record, trades = birth.backtest_and_judge(RULES, lambda s, d="": steps.append(s))
@@ -184,6 +194,31 @@ class BacktestAndJudgeTests(unittest.TestCase):
         n = len(trades["dates"])
         self.assertTrue(all(len(trades[k]) == n for k in ["price", "equity", "hold"]))
         self.assertTrue(all(0 <= t["i"] < n for t in trades["trades"]))
+
+    def test_main_reading_skips_readings_that_never_trade(self):
+        with mock.patch.object(birth, "load_prices", return_value=(prices(900), "1d")), \
+             mock.patch.object(codegen, "DATA_DIR", Path(tempfile.mkdtemp())), \
+             mock.patch.object(codegen, "write_code", return_value=ONLY_30_TRADES), \
+             mock.patch.object(skeptic.llm, "_retry", return_value=SkepticTests.carbon(None, "Lucky")):
+            record, _ = birth.backtest_and_judge({**RULES, "strategy_id": "b" * 40}, lambda s, d="": None)
+        self.assertEqual(record["main_reading"], {"fast": "30"})
+        self.assertGreater(record["results"]["n_trades"], 0)
+
+    def test_main_reading_prefers_readings_with_enough_trades(self):
+        def fake_results(trades_by_reading, finals):
+            return {k: {"trades_total": t, "final_balance": f} for k, (t, f) in enumerate(zip(trades_by_reading, finals))}
+        # Zoned Zack's real readings: the 11-trade $7,770 reading, not the 2-trade one.
+        self.assertEqual(birth.choose_main(fake_results([20, 3, 11, 2, 15, 11], [8456, 9832, 7770, 8142, 5662, 11969])), 2)
+        # London Liam's: nothing has 5 trades but one, so it speaks; zero-trade readings never do.
+        self.assertEqual(birth.choose_main(fake_results([0, 0, 493, 0, 2, 0], [1e4, 1e4, 1798, 1e4, 10152, 1e4])), 2)
+        self.assertEqual(birth.choose_main(fake_results([0, 2, 0], [1e4, 9000, 1e4])), 1)
+
+    def test_saved_code_is_reused_without_asking_neon(self):
+        folder = Path(tempfile.mkdtemp())
+        (folder / f"{RULES['strategy_id']}.py").write_text(HONEST)
+        with mock.patch.object(codegen, "write_code", side_effect=AssertionError("Neon called")):
+            out = codegen.code_and_positions(RULES, prices(400), "1d", [{"fast": "20"}], save_dir=folder)
+        self.assertTrue(out["reused"])
 
     def test_untestable_skips_the_backtest(self):
         rules = {**RULES, "testable": False, "untestable_reason": "Buy when it feels strong."}
