@@ -13,7 +13,7 @@ from backend.extractor import rules as R
 from backend.extractor.extractor import build_record, extract
 from backend.matcher.matcher import match, match_link
 from backend.npc_store.store import Store
-from backend.pipeline import run
+from backend.pipeline import RebirthError, run
 from backend.scanner import router
 from backend.scanner.scanner import LABELS, flagged_segments, scan
 from backend.watcher.watcher import clean_segments, parse_time, video_id, watch
@@ -36,6 +36,7 @@ WATCH_RAW = {
 }
 
 EXTRACT_RAW = {
+    "strategy_name": "EMA golden cross",
     "market_stated": "Bitcoin", "timeframe_stated": "daily",
     "entry": [{"rule": "50 EMA crosses above 200 EMA", "timestamp_s": 50}],
     "exit": [{"rule": "50 EMA crosses below 200 EMA", "timestamp_s": 72}],
@@ -151,10 +152,32 @@ class ExtractorTests(unittest.TestCase):
         rec = extract(self.scanned, llm_json=fake_llm)
         self.assertEqual(R.validate(rec), [])
         self.assertEqual(rec["market"], {"stated": "Bitcoin", "tested_on": "BTC-USD"})
+        self.assertEqual(rec["strategy_name"], "EMA golden cross")
+        self.assertEqual(list(rec)[:2], ["strategy_id", "strategy_name"])
         self.assertEqual(rec["timeframe"], "1d")
         self.assertEqual(rec["entry"][0]["timestamp_s"], 50)  # inside a flagged segment: kept
         self.assertEqual(rec["stop_loss"][0]["timestamp_s"], 70)  # outside: snapped to nearest flagged start
         self.assertEqual([v["term"] for v in rec["vague_terms"]], ["swing low"])  # one-meaning term dropped
+
+    def test_contradictory_answer_is_retried(self):
+        answers = [{**EXTRACT_RAW, "entry": [], "exit": [], "testable": True}, EXTRACT_RAW]
+        calls = []
+
+        def flaky(prompt, youtube_url=None, **_):
+            calls.append(1)
+            return json.loads(json.dumps(answers[len(calls) - 1]))
+
+        rec = extract(self.scanned, llm_json=flaky)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(rec["testable"])
+
+    def test_long_market_and_timeframe_are_trimmed(self):
+        raw = {**EXTRACT_RAW,
+               "market_stated": "XAUUSD (forex market is also mentioned in speech at 7:20, wait, keep it clean)",
+               "timeframe_stated": "5m (entry), 4h or daily (bias)"}
+        rec = build_record(raw, self.scanned["video"], [(0, 100)])
+        self.assertEqual(rec["market"]["stated"], "XAUUSD")
+        self.assertEqual(rec["timeframe"], "5m")
 
     def test_no_entry_is_untestable(self):
         rec = build_record({**EXTRACT_RAW, "entry": []}, self.scanned["video"], [(0, 100)])
@@ -173,6 +196,7 @@ class ExtractorTests(unittest.TestCase):
         b = json.loads(json.dumps(a))
         b["entry"] = [{"rule": "50 EMA CROSSES   above 200 EMA.", "timestamp_s": 1}]
         b["source_videos"] = [{"url": URL2, "title": "", "upload_date": ""}]
+        b["strategy_name"] = "Some other name"
         self.assertEqual(R.strategy_id(a), R.strategy_id(b))
 
     def test_schema_example_passes_validation(self):
@@ -219,6 +243,17 @@ class MatcherAndPipelineTests(unittest.TestCase):
         rerun = run(URL, data_dir=self.data, redo_from="match", llm_json=fake_llm, decide=fake_decide,
                     log=lambda _: None)
         self.assertEqual(rerun["match"]["action"], "new")
+
+    def test_reextracting_a_born_npc_is_blocked(self):
+        first = run(URL, data_dir=self.data, llm_json=fake_llm, decide=fake_decide, log=lambda _: None)
+        Store(self.data).save_npc({"npc_id": "npc1", "strategy_id": first["match"]["strategy_id"],
+                                   "source_videos": [{"url": URL}]})
+        with self.assertRaises(RebirthError):
+            run(URL, data_dir=self.data, redo_from="rules", llm_json=fake_llm, decide=fake_decide,
+                log=lambda _: None)
+        rerun = run(URL, data_dir=self.data, redo_from="match", llm_json=fake_llm, decide=fake_decide,
+                    log=lambda _: None)  # matching again is harmless: same rules, same id
+        self.assertEqual(rerun["match"]["strategy_id"], first["match"]["strategy_id"])
 
     def test_reextracting_a_video_replaces_its_old_strategy(self):
         first = run(URL, data_dir=self.data, llm_json=fake_llm, decide=fake_decide, log=lambda _: None)

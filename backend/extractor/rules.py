@@ -24,7 +24,7 @@ def normalize_text(text: str) -> str:
 def strategy_id(record: dict) -> str:
     """sha1 of the normalized rules. Same rules in any order or casing give the same id.
 
-    Source videos, timestamps, claims and the market are left out, so the same rules taught in
+    The name, source videos, timestamps, claims and the market are left out, so the same rules taught in
     two videos share an id. Different wording still gives different ids; the Matcher handles that.
     """
     payload = {"timeframe": record.get("timeframe", "")}
@@ -50,9 +50,10 @@ def tested_on(stated_market: str) -> str:
 
 
 def coerce_timeframe(stated: str) -> str:
-    """Map any stated candle timeframe onto the price data we have: 1h or 1d.
+    """Map any stated candle timeframe onto the price data we have: 5m, 1h or 1d.
 
-    Intraday up to 4 hours tests on 1h candles; anything longer, or unknown, tests on 1d.
+    Under an hour tests on 5m candles, 1 to 4 hours on 1h, and anything longer, or unknown, on 1d.
+    The Backtester can resample up from these, e.g. 5m into 15m or 1h into 4h.
     """
     text = str(stated).lower().strip()
     text = re.sub(r"^([mhdw])(\d+)$", r"\2\1", text)  # forex style H1, M15, D1
@@ -65,7 +66,7 @@ def coerce_timeframe(stated: str) -> str:
         return "1d"
     n, unit = int(match.group(1)), (match.group(2) or "m")
     if unit.startswith("m"):
-        return "1h"
+        return "5m"
     if unit.startswith("h"):
         return "1h" if n <= 4 else "1d"
     return "1d"
@@ -74,13 +75,15 @@ def coerce_timeframe(stated: str) -> str:
 def validate(record: dict) -> list[str]:
     """Return a list of problems with a strategy rules record. Empty means valid."""
     errors = []
-    expected = ["strategy_id", "source_videos", "market", "timeframe", *RULE_KEYS,
+    expected = ["strategy_id", "strategy_name", "source_videos", "market", "timeframe", *RULE_KEYS,
                 "vague_terms", "claims", "testable", "untestable_reason"]
     for key in expected:
         if key not in record:
             errors.append(f"missing {key}")
     if errors:
         return errors
+    if not isinstance(record["strategy_name"], str):
+        errors.append("strategy_name must be a string (empty if unknown)")
     if not re.fullmatch(r"[0-9a-f]{40}", record["strategy_id"]):
         errors.append("strategy_id is not a sha1 hex string")
     if not record["source_videos"] or not all("url" in v for v in record["source_videos"]):

@@ -1,5 +1,6 @@
 {
   "strategy_id": "sha1 of normalized rules",
+  "strategy_name": "Demand zone retest",
   "source_videos": [
     {"url": "https://www.youtube.com/watch?v=...", "title": "", "upload_date": "2026-05-02"}
   ],

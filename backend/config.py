@@ -53,7 +53,7 @@ NPC_DIR = DATA_DIR / "npcs"
 # Markets with downloaded price history (scripts/download_prices.py). Anything else is tested on BTC.
 TESTABLE_MARKETS = ["BTC-USD", "ETH-USD", "SOL-USD"]
 DEFAULT_TEST_MARKET = "BTC-USD"
-TIMEFRAMES = ["1h", "1d"]
+TIMEFRAMES = ["5m", "1h", "1d"]  # candle files scripts/download_prices.py can fetch
 
 # Scanner: a segment gets a flag when the Decisions API's yes probability reaches this.
 SCAN_THRESHOLD = float(os.environ.get("SCAN_THRESHOLD", "0.5"))

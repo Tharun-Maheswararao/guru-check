@@ -26,11 +26,15 @@ Write the rules exactly as the video teaches them. Do not invent rules, numbers 
 that are not in the video. Every rule and claim cites timestamp_s, the start time in seconds of
 the part it came from.
 
+- strategy_name: a short plain name for the strategy, 2 to 6 words, describing how it trades
+  (e.g. "Demand zone retest", "London open break of structure", "Golden cross"). Never include the
+  creator's name, channel name, or a branded course name.
 - market_stated: the market or symbol the creator trades, as said or as shown on the chart they
-  demonstrate on (e.g. "AAPL", "BTC", "EURUSD", "AMD (example chart)", "any market"). Use "" only if
-  it is neither said nor shown.
-- timeframe_stated: the candle timeframe, as said or as shown on the chart (e.g. "15m", "4h", "1D",
-  "daily"). Use "" only if it is neither said nor shown.
+  demonstrate on (e.g. "AAPL", "BTC", "EURUSD", "AMD (example chart)", "any market"). Just the
+  symbol, under 30 characters, no explanation. Use "" only if it is neither said nor shown.
+- timeframe_stated: the candle timeframe the entries are taken on, as said or as shown on the chart
+  (e.g. "15m", "4h", "1D", "daily"). Just the timeframe, no explanation. Use "" only if it is
+  neither said nor shown.
 - entry, exit, stop_loss, filters: lists of {{"rule": "...", "timestamp_s": N}}. One condition per
   rule, with exact settings where given (e.g. "RSI(14) crosses above 30").
 - vague_terms: every word or phrase in the rules that a programmer could read more than one way
@@ -50,6 +54,7 @@ _RULES = {"type": "array", "items": {"type": "object", "properties": {
 SCHEMA = {
     "type": "object",
     "properties": {
+        "strategy_name": {"type": "string"},
         "market_stated": {"type": "string"},
         "timeframe_stated": {"type": "string"},
         "entry": _RULES, "exit": _RULES, "stop_loss": _RULES, "filters": _RULES,
@@ -61,7 +66,7 @@ SCHEMA = {
         "testable": {"type": "boolean"},
         "untestable_reason": {"type": "string", "description": "empty string when testable"},
     },
-    "required": ["market_stated", "timeframe_stated", "entry", "exit", "stop_loss", "filters",
+    "required": ["strategy_name", "market_stated", "timeframe_stated", "entry", "exit", "stop_loss", "filters",
                  "vague_terms", "claims", "testable", "untestable_reason"],
 }
 
@@ -99,15 +104,33 @@ def _vague_terms(raw: Any) -> list[dict]:
     return terms
 
 
+def _short(value: Any, limit: int = 30) -> str:
+    """Keep a label field short: drop any explanation the model appended after it."""
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    for sep in [" (", ",", ";", " - ", " — "]:
+        head = text.split(sep)[0].strip()
+        if head and len(head) <= limit:
+            return head
+    return text[:limit].rstrip()
+
+
+def _consistent(raw: dict) -> bool:
+    """False for a self-contradictory answer: marked testable but with no entry rule."""
+    return not (raw.get("testable", True) and not raw.get("entry"))
+
+
 def build_record(raw: dict, video: dict, spans: list[tuple[float, float]]) -> dict:
     """Turn Hydrogen's answer into a valid strategy rules record."""
-    stated = str(raw.get("market_stated") or "").strip()
+    stated = _short(raw.get("market_stated"))
     record = {
         "strategy_id": "",
+        "strategy_name": str(raw.get("strategy_name") or "").strip(),
         "source_videos": [{"url": video["url"], "title": video.get("title", ""),
                            "upload_date": video.get("upload_date", "")}],
         "market": {"stated": stated, "tested_on": R.tested_on(stated)},
-        "timeframe": R.coerce_timeframe(raw.get("timeframe_stated") or ""),
+        "timeframe": R.coerce_timeframe(_short(raw.get("timeframe_stated"), 12)),
         "entry": _items(raw.get("entry"), "rule", spans),
         "exit": _items(raw.get("exit"), "rule", spans),
         "stop_loss": _items(raw.get("stop_loss"), "rule", spans),
@@ -130,6 +153,9 @@ def build_record(raw: dict, video: dict, spans: list[tuple[float, float]]) -> di
     return record
 
 
+ATTEMPTS = 3
+
+
 def extract(scan_output: dict, llm_json: Callable[..., Any] = llm.hydrogen_json) -> dict:
     video = scan_output["video"]
     flagged = flagged_segments(scan_output)
@@ -137,7 +163,13 @@ def extract(scan_output: dict, llm_json: Callable[..., Any] = llm.hydrogen_json)
         raw = {"testable": False, "untestable_reason": "No trading rules were found in the video."}
         return build_record(raw, video, [])
     text = "\n\n".join(segment_text(s) for s in flagged)
-    raw = llm_json(PROMPT.format(title=video.get("title") or "unknown", segments=text), schema=SCHEMA)
+    prompt = PROMPT.format(title=video.get("title") or "unknown", segments=text)
+    # Gemini 4 runs at a fixed temperature, so an answer occasionally contradicts itself. Ask again
+    # before accepting one that would wrongly make a teachable strategy Untestable.
+    for _ in range(ATTEMPTS):
+        raw = llm_json(prompt, schema=SCHEMA)
+        if _consistent(raw):
+            break
     record = build_record(raw, video, [(s["start_s"], s["end_s"]) for s in flagged])
     errors = R.validate(record)
     if errors:

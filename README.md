@@ -61,6 +61,7 @@ cp .env.example .env   # then add GEMINI_API_KEY from your own hackathon account
 uv venv .venv && uv pip install -r requirements.txt   # or: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 python3 scripts/download_prices.py            # BTC, ETH, SOL daily into data/prices/
 python3 scripts/download_prices.py --interval 1h
+python3 scripts/download_prices.py --interval 5m   # for strategies under 1h, about 15 min per coin, resumable
 ```
 
 Run Person 1's pipeline on one video (Watcher, Scanner, Extractor, Matcher). Output is cached in

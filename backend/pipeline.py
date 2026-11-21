@@ -26,6 +26,10 @@ from backend.watcher.watcher import canonical_url, video_id, watch
 STAGES = ["watch", "scan", "rules", "match"]
 
 
+class RebirthError(RuntimeError):
+    """Raised when re-extracting a video that already has a born NPC."""
+
+
 def run(url: str, data_dir: Path = DATA_DIR, redo_from: str | None = None,
         llm_json: Callable = llm.hydrogen_json, decide: Callable = llm.decide,
         log: Callable[[str], None] = print) -> dict:
@@ -35,6 +39,17 @@ def run(url: str, data_dir: Path = DATA_DIR, redo_from: str | None = None,
     redo = set(STAGES[STAGES.index(redo_from):]) if redo_from else set()
     timings: dict[str, float] = {}
     calls_before = llm.CALLS.copy()
+
+    if redo & {"watch", "scan", "rules"}:
+        born = store.npc_for_video(url)
+        if born is not None:
+            # New wording gives a new strategy_id, which would leave this NPC pointing at an orphaned
+            # strategy and get a second NPC born for the same video.
+            raise RebirthError(
+                f"NPC {born['npc_id']} was already born from this video. Re-extracting would give it a "
+                f"new strategy_id and a duplicate NPC. To redo it, delete "
+                f"{store.npc_dir / (born['npc_id'] + '.json')} first, or use --from match."
+            )
 
     if not redo:
         existing = match_link(url, store)
@@ -105,7 +120,10 @@ def main() -> None:
     parser.add_argument("--force", action="store_true", help="redo every stage")
     parser.add_argument("--from", dest="redo_from", choices=STAGES, help="redo this stage and later ones")
     args = parser.parse_args()
-    result = run(args.url, redo_from="watch" if args.force else args.redo_from)
+    try:
+        result = run(args.url, redo_from="watch" if args.force else args.redo_from)
+    except RebirthError as e:
+        raise SystemExit(str(e))
     print()
     print(summary(result))
 
