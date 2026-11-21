@@ -94,6 +94,7 @@ async function renderLibrary() {
       <div class="stage">${face(n, 6)}</div>
       <div class="nm">${esc(n.name).toUpperCase()}</div>
       <div class="ar">${esc(n.archetype || '')}</div>
+      ${n.strategy_name ? `<div class="st"><span>STRATEGY</span>${esc(n.strategy_name)}</div>` : ''}
       <span class="tag ${vClass(n.verdict)}">${esc(n.verdict || '').toUpperCase()}</span>
       <div class="ret" title="${n.annual_return_pct == null ? '' : `Average yearly return (compound) over ${n.years} years. Total: ${pct(Math.round(n.return_pct))}`}"
         style="color:${n.annual_return_pct == null ? 'var(--muted)' : n.annual_return_pct >= 0 ? 'var(--green)' : 'var(--red)'}">${n.annual_return_pct == null ? 'N/A' : pct(n.annual_return_pct) + '/YR'}</div>

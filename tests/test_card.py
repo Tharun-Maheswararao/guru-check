@@ -22,6 +22,11 @@ class CardTests(unittest.TestCase):
         self.assertIsNone(card["annual_return_pct"])
         self.assertIsNone(card["return_pct"])
 
+    def test_card_shows_the_strategy_name(self):
+        self.assertEqual(_card({**npc(20000), "strategy_name": "Golden Cross"})["strategy_name"], "Golden Cross")
+        self.assertEqual(_card({"npc_id": "u", "name": "U", "verdict": "Untestable", "results": None,
+                                "strategy_name": ""})["strategy_name"], "No codeable rules")
+
     def test_card_keeps_total_and_years(self):
         card = _card(npc(54352.96, "2015-07-20", "2026-11-21"))
         self.assertEqual(card["return_pct"], 443.5)

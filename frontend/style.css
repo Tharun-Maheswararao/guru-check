@@ -49,6 +49,8 @@ main{min-height:calc(100vh - var(--hud))}
 .card .stage svg,.card .stage img{display:block}
 .card .nm{font-family:var(--px);font-size:12px;line-height:16px;color:var(--gold);text-align:center}
 .card .ar{font-size:15px;font-weight:500;line-height:18px;color:var(--soft);text-align:center}
+.card .st{font-size:13px;line-height:17px;color:var(--cyan);text-align:center}
+.card .st span{display:block;font-family:var(--px);font-size:7px;line-height:10px;color:var(--muted);margin-bottom:3px}
 .card .ret{font-family:var(--px);font-size:11px;line-height:14px}
 .empty{color:var(--muted);padding:0 48px}
 

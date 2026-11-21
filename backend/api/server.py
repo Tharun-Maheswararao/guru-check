@@ -74,6 +74,7 @@ def _card(rec: dict) -> dict:
     return {k: rec.get(k) for k in ("npc_id", "name", "color", "archetype", "verdict", "portrait_path", "demo")} | {
         "return_pct": round(100 * (r["final_balance"] / 10000 - 1), 1) if r.get("final_balance") else None,
         "annual_return_pct": annual_return_pct(rec),
+        "strategy_name": rec.get("strategy_name") or ("No codeable rules" if rec.get("verdict") == "Untestable" else None),
         "years": round(years, 1) if years else None,
         "video_title": (rec.get("source_videos") or [{}])[0].get("title"),
     }
