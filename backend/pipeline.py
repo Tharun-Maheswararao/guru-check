@@ -213,6 +213,11 @@ def birth_npc(url: str, on_step: OnStep | None = None, data_dir: Path = DATA_DIR
 
     # Always birth from the saved strategy, which lists every video that joined it.
     rules = store.get_strategy(decision["strategy_id"]) or result["rules"]
+    # Strategies saved before videos recorded their length get it from the Watcher's saved output.
+    for video in rules["source_videos"]:
+        watched = Path(data_dir) / "runs" / video_id(video["url"]) / "watch.json"
+        if not video.get("duration_s") and watched.exists():
+            video["duration_s"] = json.loads(watched.read_text())["video"]["duration_s"]
     if on_rules is not None:
         on_rules(birth_preview(rules, Path(result["run_dir"])))
     finish = backtest_and_judge or _load_backtest_and_judge_reporting(on_step)
