@@ -220,6 +220,21 @@ class MatcherAndPipelineTests(unittest.TestCase):
                     log=lambda _: None)
         self.assertEqual(rerun["match"]["action"], "new")
 
+    def test_reextracting_a_video_replaces_its_old_strategy(self):
+        first = run(URL, data_dir=self.data, llm_json=fake_llm, decide=fake_decide, log=lambda _: None)
+
+        def reworded(prompt, youtube_url=None, **_):
+            out = fake_llm(prompt, youtube_url)
+            if not youtube_url:
+                out["entry"] = [{"rule": "Buy on the 50/200 EMA bullish crossover", "timestamp_s": 50}]
+            return out
+
+        second = run(URL, data_dir=self.data, redo_from="rules", llm_json=reworded, decide=fake_decide,
+                     log=lambda _: None)
+        self.assertNotEqual(first["match"]["strategy_id"], second["match"]["strategy_id"])
+        saved = [p.stem for p in (self.data / "strategies").glob("*.json")]
+        self.assertEqual(saved, [second["match"]["strategy_id"]])
+
     def test_below_threshold_is_new(self):
         store = Store(self.data)
         rec = run(URL, data_dir=self.data, llm_json=fake_llm, decide=fake_decide, log=lambda _: None)["rules"]

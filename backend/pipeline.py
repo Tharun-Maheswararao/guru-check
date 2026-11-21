@@ -64,6 +64,7 @@ def run(url: str, data_dir: Path = DATA_DIR, redo_from: str | None = None,
         store.save_strategy(rules)
     elif decision["action"] == "join":
         store.add_source_video(decision["strategy_id"], rules["source_videos"][0])
+    store.detach_video(url, keep_strategy_id=decision["strategy_id"])
     return {"match": decision, "rules": rules, "scan": scanned, "run_dir": str(run_dir),
             "timings": timings, "model_calls": dict(llm.CALLS - calls_before)}
 

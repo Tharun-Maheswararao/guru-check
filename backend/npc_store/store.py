@@ -64,6 +64,24 @@ class Store:
     def save_strategy(self, rules: dict) -> None:
         self._write(self.strategy_dir / f"{rules['strategy_id']}.json", rules)
 
+    def detach_video(self, url: str, keep_strategy_id: str) -> None:
+        """Remove a video from every other strategy, e.g. after it's re-extracted with new wording.
+
+        A strategy left with no videos is deleted, unless an NPC was already born from it.
+        """
+        vid = video_id(url)
+        for strategy in self.strategies():
+            sid = strategy["strategy_id"]
+            sources = strategy.get("source_videos", [])
+            remaining = [v for v in sources if video_id(v["url"]) != vid]
+            if sid == keep_strategy_id or len(remaining) == len(sources):
+                continue
+            path = self.strategy_dir / f"{sid}.json"
+            if remaining or self.npc_for_strategy(sid) is not None:
+                self._write(path, {**strategy, "source_videos": remaining})
+            else:
+                path.unlink()
+
     def save_npc(self, npc: dict) -> None:
         self._write(self.npc_dir / f"{npc['npc_id']}.json", npc)
 

@@ -21,15 +21,19 @@ Write the rules exactly as the video teaches them. Do not invent rules, numbers 
 that are not in the video. Every rule and claim cites timestamp_s, the start time in seconds of
 the part it came from.
 
-- market_stated: the market or symbol the creator trades, as they say it (e.g. "AAPL", "BTC",
-  "EURUSD", "any market"). Use "" if not said.
-- timeframe_stated: the candle timeframe as said (e.g. "15m", "4h", "daily"). Use "" if not said.
+- market_stated: the market or symbol the creator trades, as said or as shown on the chart they
+  demonstrate on (e.g. "AAPL", "BTC", "EURUSD", "AMD (example chart)", "any market"). Use "" only if
+  it is neither said nor shown.
+- timeframe_stated: the candle timeframe, as said or as shown on the chart (e.g. "15m", "4h", "1D",
+  "daily"). Use "" only if it is neither said nor shown.
 - entry, exit, stop_loss, filters: lists of {{"rule": "...", "timestamp_s": N}}. One condition per
   rule, with exact settings where given (e.g. "RSI(14) crosses above 30").
 - vague_terms: every word or phrase in the rules that a programmer could read more than one way
   ("sharp move", "strong trend", "near support"). Give each two or three reasonable, codeable
   meanings, e.g. {{"term": "sharp move", "meanings": ["candle > 1.5 ATR", "candle > 2 ATR", "candle > 2.5 ATR"]}}.
-- claims: performance claims, {{"text": "80 percent win rate", "timestamp_s": N}}.
+- claims: claims about how well THIS strategy performs, said or shown on screen,
+  {{"text": "80 percent win rate", "timestamp_s": N}}. Leave out sponsor segments and ads, and
+  results of other traders, products or services (e.g. a copy trading app's top trader).
 - testable: false if the entry or exit can't be turned into code even with the vague term meanings,
   e.g. "buy when it feels strong", or if the video teaches no strategy. Then give untestable_reason
   in one sentence. Otherwise true and untestable_reason ""."""
