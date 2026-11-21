@@ -65,7 +65,8 @@ rules, and duplicate pairs of the same strategy. Ground truth is each **creator'
 | Vague videos correctly marked Untestable | **2 of 3** |
 | Baseline (one Hydrogen call: "Does this strategy work?") quoting untested performance numbers | **11 of 20** |
 | NPC honesty: numbers in NPC answers backed by its saved backtest (5 questions × 5 NPCs) | **105 of 105** |
-| Full live birth from a pasted link, with the managed agent | **3 min 38 s** |
+| Full live birth from a pasted link, with the managed agent | **3 min 38 s** (daily) to **6 min 54 s** (10-min video, 5-minute candles) |
+| Carbon auditor managed agent reproducing our backtest independently | **exact match** (final balance, trades, drawdown) |
 
 Where it fails, and what we changed after seeing it, is in [eval/RESULTS.md](eval/RESULTS.md):
 - **Strict duplicate matching:** only 1 of 8 duplicate pairs joined.

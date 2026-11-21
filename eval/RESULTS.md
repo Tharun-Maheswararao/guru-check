@@ -58,6 +58,30 @@ A new RSI(2) video was pasted into the web app and born end to end in **3 minute
 The NPC, "Bargain Benny", turned $10,000 into $1,006 over 378 trades and beat 0.4% of random
 traders. Its verdict is Lucky.
 
+## Both managed agents in one live birth
+
+Trading Rush's MACD video (5-minute candles) was pasted into the web app. It took **6 min 54 s**:
+
+| Step | Time |
+|---|---|
+| Hydrogen watches the 10-minute video | 153s |
+| Hydrogen extracts | 16s |
+| **Neon managed agent** codes and tests in its sandbox | 156s, 18 sandbox steps |
+| Judge, with the **Carbon auditor managed agent** in parallel | 71s |
+| Portrait | 12s |
+
+The auditor wrote its own backtest in a separate sandbox and **reproduced our engine exactly** on the
+same 18,360 candles:
+
+| | Final balance | Closed trades | Max drawdown |
+|---|---|---|---|
+| Our engine | $6,244.91 | 152 | −37.64% |
+| Carbon auditor's own backtest | $6,244.91 | 152 | −37.64% |
+
+It also scrambled prices after several cut points and found no lookahead. On the full 3.8 years,
+the NPC ("Crossover Cody") lost everything over 3,525 trades, as fees ate the account, and was
+judged Lucky.
+
 ## How the baseline compares
 
 A single model call quotes performance numbers for 11 of 20 videos, though nothing was tested. A Guru
