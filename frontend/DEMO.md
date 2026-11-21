@@ -11,9 +11,9 @@ added on the submission page.
 - Real NPCs are born and have portraits (`python -m backend.api.portrait`). No `data/npcs/demo-*`.
 - Use Chrome with sound on and the microphone allowed. `M` mutes the sound effects.
 - Have a few public strategy videos ready to offer if a judge doesn't have one.
-- A brand-new birth takes 2 to 5 minutes: Hydrogen watches (about 40s), the Neon managed agent codes
-  and tests in its sandbox (1 to 3 min), and Carbon judges (about 30 to 60s). **Start it in the first
-  20 seconds.** If the network or quota is struggling, start the server with `BACKTEST_AGENT=direct`,
+- A brand-new birth takes 2 to 5 minutes; a live test from a pasted link took 3 min 38 s. Hydrogen
+  watches (about 40 to 55s), the Neon managed agent codes and tests in its sandbox (1 to 3 min), and
+  Carbon judges (about 30 to 60s). **Start it in the first 20 seconds.** If the network or quota is struggling, start the server with `BACKTEST_AGENT=direct`,
   which takes about a minute less and skips the sandbox.
 - Keep one fully born NPC as a labelled backup in case the live birth runs over.
 
@@ -38,8 +38,8 @@ added on the submission page.
 5. **Proof (25s).** "We tested on 20 videos we didn't build against, checked against the creators' own
    written rules: 0 crashes, 60% of their rules found, 69% of ours backed by theirs, no real strategy
    wrongly refused. A single model call quoted performance numbers for 11 of 20 videos without testing
-   anything. Our NPCs only quote their own backtests. Where it still fails, like strict duplicate
-   matching, is in our results file."
+   anything. We asked our NPCs 25 number questions: all 105 numbers they said match their saved
+   backtests. Where it still fails, like strict duplicate matching, is in our results file."
 
 ## Likely questions
 

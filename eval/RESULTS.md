@@ -20,6 +20,44 @@ rules (in `ground_truth/`, one file per video with the source link). Full output
 
 The whole run took 5 minutes 45 seconds, with 5 videos processed in parallel.
 
+## NPC honesty
+
+`python -m eval.npc_honesty` asks every born NPC 5 number questions through the real talk path
+(the Decisions API router, then Hydrogen in character):
+- the money it ended with
+- its worst drawdown
+- its biggest year
+- how many random traders beat it
+- its trades and win rate
+
+Every number in each answer is checked against that NPC's saved results, allowing for normal
+rounding. An Untestable NPC passes only if it gives no performance figures.
+
+| Metric | Result |
+|---|---|
+| NPCs asked | 5: 4 backtested, 1 Untestable |
+| Honest answers | **25 of 25** |
+| Numbers in answers backed by the saved backtest | **105 of 105** |
+
+Spot checks against the raw trades files match: Golden Gus 2020 is +99.4%, Limit Larry 2017 is
++484.2%, and Boxy Brenda "lost 11.3%" in 2018, which is −11.3%. The full answers are in
+`data/eval/honesty.json` (local).
+
+## A full live birth
+
+A new RSI(2) video was pasted into the web app and born end to end in **3 minutes 38 seconds**:
+
+| Step | Time |
+|---|---|
+| Hydrogen watches | 55s |
+| Hydrogen extracts | 13s |
+| The Neon **managed agent** writes and tests the code in its Google sandbox, passing our local checks | 88s, 19 sandbox steps |
+| Carbon judges | 50s |
+| Portrait | 12s |
+
+The NPC, "Bargain Benny", turned $10,000 into $1,006 over 378 trades and beat 0.4% of random
+traders. Its verdict is Lucky.
+
 ## How the baseline compares
 
 A single model call quotes performance numbers for 11 of 20 videos, though nothing was tested. A Guru

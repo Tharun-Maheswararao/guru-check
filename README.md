@@ -63,6 +63,8 @@ rules, and duplicate pairs of the same strategy. Ground truth is each **creator'
 | Real strategies wrongly refused | **0 of 17** |
 | Vague videos correctly marked Untestable | **2 of 3** |
 | Baseline (one Hydrogen call: "Does this strategy work?") quoting untested performance numbers | **11 of 20** |
+| NPC honesty: numbers in NPC answers backed by its saved backtest (5 questions × 5 NPCs) | **105 of 105** |
+| Full live birth from a pasted link, with the managed agent | **3 min 38 s** |
 
 Where it fails, and what we changed after seeing it, is in [eval/RESULTS.md](eval/RESULTS.md):
 - **Strict duplicate matching:** only 1 of 8 duplicate pairs joined.
@@ -97,6 +99,7 @@ takes about 2 to 5 minutes, or click a card to talk to an NPC and press **Simula
 |---|---|
 | `.venv/bin/python -m backend.pipeline URL` | Watch, scan, extract and match one video from the command line |
 | `.venv/bin/python -m eval.run_eval --baseline` | The 20-video evaluation |
+| `.venv/bin/python -m eval.npc_honesty` | Asks every NPC 5 number questions and checks each answer |
 | `.venv/bin/python -m unittest discover tests` | Offline tests with fake model calls |
 | `BACKTEST_AGENT=direct` | Use one direct Neon call instead of the managed agent (faster, no sandbox) |
 | `PORTRAITS=0`, `GEMINI_VOICE=0` | Turn off portraits or Gemini voice |
