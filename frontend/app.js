@@ -79,7 +79,9 @@ window.addEventListener('hashchange', route);
 // ---------- library ----------
 async function renderLibrary() {
   const npcs = await api('/api/npcs');
+  const sel = npcs.some(n => n.npc_id === current) ? current : npcs[0]?.npc_id;
   view.innerHTML = `
+  <div class="lib">
   <section class="start">
     <h1>WOULD YOU HAVE<br>GOT RICH?</h1>
     <p>Paste a trading video. Its strategy is born as a trader you can question and race.</p>
@@ -87,15 +89,15 @@ async function renderLibrary() {
   </section>
   <div class="roster-h"><span class="px">CHOOSE A TRADER</span><span class="label">${npcs.length} STRATEGIES TESTED</span></div>
   <div class="roster">${npcs.map(n => `
-    <a class="card" href="#/npc/${n.npc_id}">
+    <a class="card${n.npc_id === sel ? ' sel' : ''}" href="#/npc/${n.npc_id}" title="${esc(n.video_title ? 'From the video: ' + n.video_title : '')}">
       <div class="stage">${face(n, 6)}</div>
       <div class="nm">${esc(n.name).toUpperCase()}</div>
       <div class="ar">${esc(n.archetype || '')}</div>
       <span class="tag ${vClass(n.verdict)}">${esc(n.verdict || '').toUpperCase()}</span>
-      <div class="ret" style="color:${n.return_pct == null ? 'var(--muted)' : n.return_pct >= 0 ? 'var(--green)' : 'var(--red)'}">${pct(n.return_pct)}</div>
-      <div class="vid">from “${esc(n.video_title || '')}”</div>
+      <div class="ret" style="color:${n.return_pct == null ? 'var(--muted)' : n.return_pct >= 0 ? 'var(--green)' : 'var(--red)'}">${n.return_pct == null ? 'N/A' : pct(Math.round(n.return_pct))}</div>
       ${n.demo ? '<span class="demo">DEMO DATA</span>' : ''}
     </a>`).join('') || '<p class="empty">No NPCs yet. Paste a video to birth the first one.</p>'}
+  </div>
   </div>`;
   $('#paste').onsubmit = e => { e.preventDefault(); const u = $('#url').value.trim(); if (u) birth(u); };
 }
@@ -130,7 +132,6 @@ async function birth(url) {
 let history = [];
 async function renderRoom(id) {
   const n = await api(`/api/npcs/${id}`);
-  const trades = n.results ? await api(`/api/npcs/${id}/trades`).catch(() => null) : null;
   const r = n.results || {};
   const video = (n.source_videos || [])[0] || {};
   const dur = video.duration_s || Math.max(60, ...(n.rules_timeline || []).map(x => x.timestamp_s + 30));
@@ -138,55 +139,72 @@ async function renderRoom(id) {
   const opener = n.results
     ? `I turned $10,000 into ${money(r.final_balance)}. But ${r.share_random_better}% of random traders did better than me.`
     : `Hi, I'm ${n.name}. Fair warning: nobody can test my strategy.`;
+  const pins = n.rules_timeline || [];
+  const kinds = [...new Set(pins.map(p => p.kind))];
+  const KIND = { entry: 'ENTRY', exit: 'EXIT', stop_loss: 'STOP LOSS', filters: 'FILTER', claim: 'BOLD CLAIM' };
+  const legendKinds = ['entry', 'exit', 'stop_loss', 'claim'].concat(kinds.includes('filters') ? ['filters'] : []);
+  const crossMarket = n.market && n.market.stated && n.market.tested_on && !n.market.tested_on.startsWith(n.market.stated);
+  const meter = (k, v, shown, color) => `<div class="grp"><div class="row"><span class="k">${k}</span><span class="v">${shown}</span></div>
+          <div class="meter"><i style="width:${Math.max(0, Math.min(100, Math.abs(v || 0)))}%;background:${color}"></i></div></div>`;
   view.innerHTML = `
   <section class="room">
     <div class="left">
-      <div class="scene panel">
-        <div class="window"></div>
-        <div class="monitor">${monitorSvg(trades)}</div>
-        <div class="desk"></div>
-        <div class="npc" id="npc">${face(n, 12)}</div>
-        <div class="bubble"><div class="who">${esc(n.name).toUpperCase()} SAYS</div><div id="say">${esc(opener)}</div>
-          <div class="cite" id="cite"></div></div>
-        <div class="plate"><span class="nm">${esc(n.name).toUpperCase()}</span><span class="ar">${esc(n.archetype || '')}</span>
-          <span class="tag ${vClass(n.verdict)}" style="transform:rotate(-4deg)">${esc(n.verdict).toUpperCase()}</span>
+      <div class="stagebox">
+        ${ROOM_SVG}
+        <div class="npc" id="npc">${face(n, 14)}</div>
+        <div class="bubble"><div class="who">${esc(n.name).toUpperCase()} SAYS</div><div class="say" id="say"></div>
+          <div class="cite hidden" id="cite"></div></div>
+        ${TAIL_SVG}
+        <div class="plate"><div class="pt"><div class="nm">${esc(n.name).toUpperCase()}</div><div class="ar">${esc(n.archetype || '')}</div></div>
+          <span class="tag ${vClass(n.verdict)}">${esc(n.verdict).toUpperCase()}</span>
           ${n.demo ? '<span class="demo">DEMO DATA</span>' : ''}</div>
+        ${n.results ? `
+        <div class="statbox">
+          <div class="row"><span class="k">BALANCE</span><span class="v big">${money(r.final_balance)}</span></div>
+          ${meter('WIN RATE', r.win_rate, `${r.win_rate}%`, 'var(--green)')}
+          ${meter('WORST DROP', r.max_drawdown, `${r.max_drawdown}%`, 'var(--red)')}
+          ${meter('BEATS RANDOM', r.random_percentile, `${r.random_percentile}%`, 'var(--cyan)')}
+        </div>` : `
+        <div class="statbox"><div class="row"><span class="k">WHY UNTESTABLE</span></div><p>${esc(n.untestable_reason || '')}</p></div>`}
       </div>
-      ${n.results ? `
-      <div class="stats">
-        <div class="stat panel"><div class="label">BALANCE FROM $10,000</div><div class="val" style="color:var(--gold)">${money(r.final_balance)}</div></div>
-        <div class="stat panel"><div class="label">WIN RATE</div><div class="val">${r.win_rate}%</div></div>
-        <div class="stat panel"><div class="label">WORST DROP</div><div class="val" style="color:var(--red)">${r.max_drawdown}%</div></div>
-        <div class="stat panel"><div class="label">BEATS RANDOM</div><div class="val" style="color:var(--cyan)">${r.random_percentile}%</div></div>
-        <div class="stat panel"><div class="label">JUST HOLDING</div><div class="val">${money(r.hold_final)}</div></div>
-      </div>` : `<div class="panel untestable"><div class="label">WHY UNTESTABLE</div><p>${esc(n.untestable_reason || '')}</p></div>`}
-      <div class="timeline panel">
-        <div class="label">SOURCE VIDEO · ${esc(video.title || '').toUpperCase()} · ${ts(dur)}</div>
-        <div class="track">${(n.rules_timeline || []).map(p => `
-          <a class="pin k-${p.kind}" style="left:${Math.min(97, Math.max(3, 100 * p.timestamp_s / dur))}%" title="${esc(p.rule)}" href="${videoAt(video.url, p.timestamp_s)}" target="_blank">
-            <i></i><span>${p.kind === 'filters' ? 'FILTER' : p.kind.replace('_', ' ').toUpperCase()} ${ts(p.timestamp_s)}</span></a>`).join('')}
+      <div class="timeline">
+        <a class="play" href="${videoAt(video.url, 0)}" target="_blank" title="Open the source video">${PLAY_SVG('#FFC93C')}</a>
+        <div class="tl">
+          <div class="tl-h"><span>SOURCE VIDEO · "${esc(video.title || '').toUpperCase()}"</span><span>${ts(dur)}</span></div>
+          <div class="track"><div class="bar"></div><div class="prog" id="prog"></div>${pins.map((p, k) => `
+            <a class="pin k-${p.kind}" data-k="${k}" style="left:${Math.min(98.5, Math.max(1.5, 100 * p.timestamp_s / dur))}%" title="${esc(KIND[p.kind] || p.kind)} ${ts(p.timestamp_s)}: ${esc(p.rule)}" href="${videoAt(video.url, p.timestamp_s)}" target="_blank"></a>`).join('')}
+          </div>
+          <div class="tl-legend">${legendKinds.map(k => `<span class="c-${k}">■ ${KIND[k]}</span>`).join('')}
+            ${crossMarket ? `<span class="mkt">Video trades ${esc(n.market.stated)}, tested on ${esc(n.market.tested_on)}.</span>` : ''}</div>
         </div>
-        ${(n.market && n.market.stated && n.market.tested_on && !n.market.tested_on.startsWith(n.market.stated)) ? `<p style="color:var(--soft);font-size:14px;margin:26px 0 0">Video trades ${esc(n.market.stated)}, tested on ${esc(n.market.tested_on)}.</p>` : ''}
       </div>
     </div>
     <div class="right">
-      <div class="panel dialogue" id="dlg"></div>
-      <div class="chips">${['Is your strategy real?', 'How did you do in 2022?', 'What was your worst moment?', 'What are your rules?'].map(q => `<button class="chip">${q}</button>`).join('')}</div>
+      <div class="panel dialogue"><div class="label">DIALOGUE</div><div class="msgs" id="dlg"></div>
+        <div class="chips" id="chips">${['Is your strategy real?', 'How did you do in 2022?', 'What was your worst moment?', 'What are your rules?'].map(q => `<button class="chip">${q}</button>`).join('')}</div></div>
       <form class="ask" id="ask"><input id="q" placeholder="Ask ${esc(n.name)} anything…" autocomplete="off" />
         <button type="button" class="mic" id="mic" title="Hold a voice chat">${micSvg()}</button></form>
-      ${n.results ? `<a class="btn" style="text-align:center" href="#/sim/${id}">▶ SIMULATE</a>` : ''}
+      ${n.results ? `<a class="btn simbtn" href="#/sim/${id}">${PLAY_SVG('#12101C')}SIMULATE</a>` : ''}
     </div>
   </section>`;
-  const firstPin = (n.rules_timeline || []).find(p => p.kind === 'claim') || (n.rules_timeline || [])[0];
-  if (firstPin) { $('#cite').textContent = `CITES VIDEO ${ts(firstPin.timestamp_s)} ↗`; $('#cite').onclick = () => window.open(videoAt(video.url, firstPin.timestamp_s)); }
+  const setSay = text => { $('#say').textContent = `"${text}"`; };
+  const cite = p => {
+    if (!p) return;
+    $('#cite').classList.remove('hidden');
+    $('#cite').textContent = `▶ CITES VIDEO ${ts(p.timestamp_s)}`;
+    $('#cite').onclick = () => window.open(videoAt(video.url, p.timestamp_s));
+    $('#prog').style.width = Math.min(100, 100 * p.timestamp_s / dur) + '%';
+  };
+  setSay(opener);
+  cite(pins.find(p => p.kind === 'claim') || pins[0]);
   addMsg('npc', opener);
   const ask = async q => {
-    if (!q) return; addMsg('user', q); $('#q').value = '';
+    if (!q) return; $('#chips')?.classList.add('hidden'); addMsg('user', q); $('#q').value = '';
     const thinking = addMsg('npc', '…');
     try {
       const { answer } = await post(`/api/npcs/${id}/talk`, { question: q, history });
-      thinking.textContent = answer; history.push({ role: 'user', text: q }, { role: 'npc', text: answer });
-      $('#say').textContent = answer; speak(answer);
+      thinking.textContent = answer; $('#dlg').scrollTop = 1e6; history.push({ role: 'user', text: q }, { role: 'npc', text: answer });
+      setSay(answer); speak(answer);
     } catch (e) { thinking.textContent = 'Error: ' + e.message; }
   };
   $('#ask').onsubmit = e => { e.preventDefault(); ask($('#q').value.trim()); };
@@ -201,14 +219,27 @@ function videoAt(url, s) {
   if (!url) return '#';
   return url + (url.includes('?') ? '&' : '?') + 't=' + Math.floor(s || 0) + 's';
 }
-function monitorSvg(t) {
-  if (!t) return '<svg viewBox="0 0 100 50"><text x="50" y="30" fill="#3DDC84" font-size="8" text-anchor="middle" font-family="monospace">NO DATA</text></svg>';
-  const p = t.price, step = Math.max(1, Math.floor(p.length / 40)), pts = [];
-  const mn = Math.min(...p), mx = Math.max(...p);
-  for (let i = 0; i < p.length; i += step) pts.push([(100 * i / p.length).toFixed(1), (46 - 42 * (p[i] - mn) / (mx - mn || 1)).toFixed(1)]);
-  return `<svg viewBox="0 0 100 50" preserveAspectRatio="none"><polyline points="${pts.map(x => x.join(',')).join(' ')}" fill="none" stroke="#3DDC84" stroke-width="1.5"/></svg>`;
-}
-function micSvg() { return '<svg width="24" height="24" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect x="3" y="0" width="2" height="5" fill="#7FD8FF"/><rect x="2" y="3" width="1" height="2" fill="#7FD8FF"/><rect x="5" y="3" width="1" height="2" fill="#7FD8FF"/><rect x="3" y="5" width="2" height="1" fill="#7FD8FF"/><rect x="3" y="6" width="2" height="1" fill="#7FD8FF"/><rect x="2" y="7" width="4" height="1" fill="#7FD8FF"/></svg>'; }
+// pixel room scene from the Paper artboard "2 · NPC room: talk"
+const ROOM_SVG = `<svg class="scene" width="932" height="640" viewBox="0 0 932 640" shape-rendering="crispEdges" aria-hidden="true">
+<rect width="932" height="640" fill="#241F38"/><rect x="0" y="456" width="932" height="184" fill="#171427"/><rect x="0" y="456" width="932" height="8" fill="#0B0913"/>
+<path d="M0 520H932M0 584H932" fill="none" stroke="#1E1A30" stroke-width="4"/>
+<rect x="48" y="56" width="300" height="200" fill="#0B0913"/><rect x="56" y="64" width="284" height="184" fill="#2A3566"/>
+<rect x="88" y="90" width="4" height="4" fill="#F4F1EA"/><rect x="180" y="80" width="4" height="4" fill="#F4F1EA"/><rect x="290" y="100" width="4" height="4" fill="#F4F1EA"/><rect x="240" y="74" width="4" height="4" fill="#FFC93C"/>
+<rect x="56" y="180" width="40" height="68" fill="#1B2148"/><rect x="100" y="150" width="56" height="98" fill="#1B2148"/><rect x="160" y="196" width="36" height="52" fill="#1B2148"/><rect x="200" y="130" width="60" height="118" fill="#1B2148"/><rect x="264" y="170" width="76" height="78" fill="#1B2148"/>
+<rect x="112" y="166" width="8" height="8" fill="#FFC93C"/><rect x="132" y="190" width="8" height="8" fill="#FFC93C"/><rect x="216" y="146" width="8" height="8" fill="#FFC93C"/><rect x="236" y="176" width="8" height="8" fill="#7FD8FF"/><rect x="280" y="190" width="8" height="8" fill="#FFC93C"/>
+<rect x="196" y="56" width="8" height="200" fill="#0B0913"/><rect x="48" y="152" width="300" height="8" fill="#0B0913"/>
+<rect x="560" y="48" width="324" height="216" fill="#0B0913"/><rect x="572" y="60" width="300" height="192" fill="#120F1F"/>
+<path d="M572 108H872M572 156H872M572 204H872" fill="none" stroke="#1E1A30" stroke-width="2"/>
+<rect x="600" y="150" width="12" height="40" fill="#3DDC84"/><rect x="605" y="140" width="2" height="60" fill="#3DDC84"/><rect x="628" y="130" width="12" height="36" fill="#3DDC84"/><rect x="656" y="140" width="12" height="44" fill="#FF5470"/><rect x="684" y="110" width="12" height="44" fill="#3DDC84"/><rect x="712" y="120" width="12" height="60" fill="#FF5470"/><rect x="740" y="150" width="12" height="52" fill="#FF5470"/><rect x="768" y="128" width="12" height="40" fill="#3DDC84"/><rect x="796" y="100" width="12" height="38" fill="#3DDC84"/><rect x="824" y="90" width="12" height="30" fill="#3DDC84"/>
+<rect x="584" y="70" width="64" height="12" fill="#FFC93C"/><rect x="560" y="264" width="324" height="8" fill="#0B0913"/><rect x="704" y="272" width="36" height="24" fill="#0B0913"/>
+<rect x="440" y="404" width="300" height="20" fill="#5A3E2B"/><rect x="440" y="424" width="300" height="8" fill="#3A281C"/><rect x="456" y="432" width="16" height="72" fill="#3A281C"/><rect x="708" y="432" width="16" height="72" fill="#3A281C"/>
+<rect x="600" y="372" width="72" height="32" fill="#0B0913"/><rect x="606" y="378" width="60" height="22" fill="#7FD8FF"/>
+<rect x="480" y="388" width="40" height="16" fill="#FFC93C"/><rect x="484" y="380" width="32" height="8" fill="#FFC93C"/><rect x="488" y="372" width="24" height="8" fill="#FFC93C"/>
+<rect x="800" y="360" width="40" height="96" fill="#2E6B3F"/><rect x="792" y="344" width="56" height="24" fill="#3DDC84"/><rect x="808" y="328" width="24" height="20" fill="#3DDC84"/><rect x="796" y="440" width="48" height="16" fill="#5A3E2B"/>
+</svg>`;
+const TAIL_SVG = '<svg class="tail" width="36" height="32" viewBox="0 0 9 8" shape-rendering="crispEdges" aria-hidden="true"><rect x="5" y="0" width="4" height="2" fill="#0B0913"/><rect x="3" y="2" width="4" height="2" fill="#0B0913"/><rect x="1" y="4" width="4" height="2" fill="#0B0913"/><rect x="0" y="6" width="2" height="2" fill="#0B0913"/><rect x="5" y="0" width="3" height="1" fill="#F4F1EA"/><rect x="4" y="2" width="2" height="1" fill="#F4F1EA"/></svg>';
+const PLAY_SVG = c => `<svg width="20" height="20" viewBox="0 0 5 5" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="0" width="1" height="5" fill="${c}"/><rect x="2" y="1" width="1" height="3" fill="${c}"/><rect x="3" y="2" width="1" height="1" fill="${c}"/></svg>`;
+function micSvg() { return '<svg width="22" height="22" viewBox="0 0 7 7" shape-rendering="crispEdges"><rect x="2" y="0" width="3" height="4" fill="#12101C"/><rect x="1" y="3" width="1" height="1" fill="#12101C"/><rect x="5" y="3" width="1" height="1" fill="#12101C"/><rect x="2" y="4" width="3" height="1" fill="#12101C"/><rect x="3" y="5" width="1" height="2" fill="#12101C"/></svg>'; }
 
 // voice: browser speech to text in, text to speech out
 function setupMic(ask) {
@@ -235,30 +266,36 @@ function speak(text) {
 // ---------- simulate ----------
 let sim = null;
 function stopSim() { if (sim) { cancelAnimationFrame(sim.raf); sim = null; } }
+const SPEEDS = [1, 4, 12];
+const COIN_NAME = { BTC: 'BITCOIN', ETH: 'ETHEREUM', SOL: 'SOLANA' };
+const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const niceDate = s => { const [y, m, d] = String(s).slice(0, 10).split('-'); return m ? `${MON[+m - 1]} ${+d} ${y}` : s; };
 async function renderSim(id) {
   const n = await api(`/api/npcs/${id}`);
   const t = await api(`/api/npcs/${id}/trades`);
+  const NAME = esc(n.name).toUpperCase(), sym = esc(t.market.split('-')[0]), coin = COIN_NAME[sym] || sym;
   view.innerHTML = `
   <section class="sim">
     <div class="simhud">
-      <div class="stat panel"><div class="label">DATE</div><div class="val" id="s-date"></div></div>
-      <div class="stat panel"><div class="label">DAY</div><div class="val" id="s-day"></div></div>
-      <div class="stat panel wallet"><div class="label">${esc(n.name).toUpperCase()}'S WALLET</div><div class="val"><span id="s-bal" style="color:var(--gold)"></span> <span id="s-chg" style="font-size:12px"></span></div></div>
-      <div class="stat panel"><div class="label">HOLD ${esc(t.market.split('-')[0])}</div><div class="val" id="s-hold" style="color:var(--cyan)"></div></div>
-      <div class="stat panel"><div class="label">SPEED</div><div class="val" id="s-speed" style="color:var(--cyan)"></div></div>
+      <div class="tile" style="min-width:220px"><div class="label">DATE</div><div class="val" id="s-date"></div></div>
+      <div class="tile" style="min-width:92px"><div class="label">DAY</div><div class="val" id="s-day"></div></div>
+      <div class="tile grow"><div class="label">${NAME}'S WALLET</div><div class="vrow"><span class="val" id="s-bal" style="color:var(--gold)"></span><span class="chg" id="s-chg"></span></div></div>
+      <div class="tile speed" id="s-speedtile" title="Change speed" style="min-width:92px"><div class="label">SPEED</div><div class="val" id="s-speed"></div></div>
     </div>
-    <div class="raceWrap"><canvas id="race"></canvas>
-      <div class="legend"><span><b style="background:var(--gold)"></b>${esc(n.name).toUpperCase()}</span><span><b style="background:var(--cyan)"></b>HOLD ${esc(t.market.split('-')[0])}</span><span><b style="background:rgba(143,136,173,.5)"></b>1,000 RANDOM TRADERS</span><span><b style="background:var(--green);width:8px"></b>BUY</span><span><b style="background:var(--red);width:8px"></b>SELL</span></div>
+    <div class="raceArea">
+      <div class="raceWrap"><canvas id="race"></canvas>
+        <div class="legend"><span><b style="background:var(--gold)"></b>${NAME}</span><span><b style="background:var(--cyan)"></b>HOLD ${coin}</span><span><b style="background:var(--muted);opacity:.5"></b>1,000 RANDOM TRADERS</span><span><b class="sq" style="background:var(--green)"></b>BUY</span><span><b class="sq" style="background:var(--red)"></b>SELL</span></div>
+        <div class="controls">
+          <button class="btn small" id="c-play">PAUSE</button>
+          ${SPEEDS.map(s => `<button class="btn small ghost" data-speed="${s}">x${s}</button>`).join('')}
+          <button class="btn small ghost" id="c-restart">RESTART</button>
+          <a class="btn small ghost" href="#/npc/${id}">BACK TO ${NAME}</a>
+          ${n.demo ? '<span class="demo">DEMO DATA</span>' : ''}
+        </div>
+      </div>
       <div class="modal hidden" id="pain"></div>
+      <div class="modal hidden" id="ending"></div>
     </div>
-    <div class="controls">
-      <button class="btn small" id="c-play">PAUSE</button>
-      <button class="btn small ghost" data-speed="1">x1</button><button class="btn small ghost" data-speed="4">x4</button><button class="btn small ghost" data-speed="12">x12</button>
-      <button class="btn small ghost" id="c-restart">RESTART</button>
-      <a class="btn small ghost" href="#/npc/${id}">BACK TO ${esc(n.name).toUpperCase()}</a>
-      ${n.demo ? '<span class="demo">DEMO DATA</span>' : ''}
-    </div>
-    <div class="ending hidden" id="ending"></div>
   </section>`;
 
   const cv = $('#race'), ctx = cv.getContext('2d');
@@ -267,41 +304,57 @@ async function renderSim(id) {
   const all = [...t.equity, ...t.hold, ...t.random_band.p90, ...t.random_band.p10];
   const lo = Math.min(...all) * 0.95, hi = Math.max(...all) * 1.05, logY = hi / lo > 8;
   sim = { i: 0, speed: 4, playing: true, painShown: false, quitAt: null, raf: 0 };
+  let stride = 1;
 
-  function size() { const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; }
-  size(); window.onresize = size;
-  const X = i => (40 + (cv.width - 80) * i / (N - 1));
-  const Y = v => { const pad = 90 * devicePixelRatio, h = cv.height - pad - 40 * devicePixelRatio;
+  function size() {
+    const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio;
+    stride = Math.max(1, Math.round(N / Math.max(20, (r.width - 80) / 10))); // about 10px per pixel step
+  }
+  size(); window.onresize = () => sim && size();
+  const X = i => (40 * devicePixelRatio + (cv.width - 80 * devicePixelRatio) * i / (N - 1));
+  const Y = v => { const pad = 90 * devicePixelRatio, h = cv.height - pad - 80 * devicePixelRatio;
     const f = logY ? (Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) : (v - lo) / (hi - lo); return pad + h * (1 - f); };
+  const snap = (k, upto) => Math.min(upto, Math.ceil(k / stride) * stride);
 
-  function line(arr, upto, color, w) {
-    ctx.strokeStyle = color; ctx.lineWidth = w * devicePixelRatio; ctx.beginPath();
-    for (let i = 0; i <= upto; i++) { const x = X(i), y = Y(arr[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  // pixel step line: flat to the next sample, then straight up or down
+  function steps(arr, upto, color, w) {
+    ctx.strokeStyle = color; ctx.lineWidth = w * devicePixelRatio; ctx.lineJoin = 'miter'; ctx.lineCap = 'square';
+    ctx.beginPath(); ctx.moveTo(X(0), Y(arr[0]));
+    let prev = arr[0];
+    for (let s = stride; ; s += stride) {
+      const k = Math.min(s, upto);
+      ctx.lineTo(X(k), Y(prev)); ctx.lineTo(X(k), Y(arr[k])); prev = arr[k];
+      if (k >= upto) break;
+    }
     ctx.stroke();
   }
   function draw() {
-    const i = Math.floor(sim.i), d = devicePixelRatio;
-    ctx.clearRect(0, 0, cv.width, cv.height);
+    const i = Math.floor(sim.i), d = devicePixelRatio, W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
     ctx.strokeStyle = '#2C2742'; ctx.lineWidth = 2 * d; ctx.setLineDash([8 * d, 8 * d]);
-    for (let k = 1; k < 6; k++) { const y = 90 * d + (cv.height - 130 * d) * k / 6; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cv.width, y); ctx.stroke(); }
-    ctx.setLineDash([]); ctx.strokeStyle = '#4A4366'; ctx.beginPath(); ctx.moveTo(0, Y(t.start_cash)); ctx.lineTo(cv.width, Y(t.start_cash)); ctx.stroke();
-    ctx.fillStyle = '#8F88AD'; ctx.font = `${9 * d}px 'Press Start 2P'`; ctx.fillText('$10,000', 44 * d, Y(t.start_cash) - 8 * d);
+    for (let y = 182 * d; y < H - 20 * d; y += 100 * d) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    ctx.setLineDash([]); ctx.strokeStyle = '#4A4366'; ctx.beginPath(); ctx.moveTo(0, Y(t.start_cash)); ctx.lineTo(W, Y(t.start_cash)); ctx.stroke();
     // random crowd band
     ctx.fillStyle = 'rgba(143,136,173,0.18)'; ctx.beginPath();
     for (let k = 0; k <= i; k++) ctx[k ? 'lineTo' : 'moveTo'](X(k), Y(t.random_band.p90[k]));
     for (let k = i; k >= 0; k--) ctx.lineTo(X(k), Y(t.random_band.p10[k]));
     ctx.fill();
-    line(t.hold, i, '#7FD8FF', 3);
-    line(t.equity, Math.min(i, sim.quitAt ?? i), '#FFC93C', 4);
-    if (sim.quitAt != null && i > sim.quitAt) { ctx.setLineDash([6 * d, 6 * d]); ctx.globalAlpha = .45; line(t.equity, i, '#FFC93C', 3); ctx.globalAlpha = 1; ctx.setLineDash([]); }
-    for (let k = 0; k <= i; k++) (tradesAt[k] || []).forEach(x => { ctx.fillStyle = x.side === 'buy' ? '#3DDC84' : '#FF5470'; ctx.fillRect(X(k) - 6 * d, Y(t.equity[k]) - 6 * d, 12 * d, 12 * d); });
-    // now line and runner
-    ctx.strokeStyle = '#F4F1EA'; ctx.setLineDash([6 * d, 6 * d]); ctx.lineWidth = 2 * d; ctx.beginPath(); ctx.moveTo(X(i), 0); ctx.lineTo(X(i), cv.height); ctx.stroke(); ctx.setLineDash([]);
+    steps(t.hold, i, '#7FD8FF', 6);
+    const q = sim.quitAt;
+    steps(t.equity, Math.min(i, q ?? i), '#FFC93C', 8);
+    if (q != null && i > q) { ctx.setLineDash([6 * d, 6 * d]); ctx.globalAlpha = .45; steps(t.equity, i, '#FFC93C', 4); ctx.globalAlpha = 1; ctx.setLineDash([]); }
+    for (let k = 0; k <= i; k++) (tradesAt[k] || []).forEach(x => {
+      const s = snap(k, i); ctx.fillStyle = x.side === 'buy' ? '#3DDC84' : '#FF5470'; ctx.fillRect(X(s) - 6 * d, Y(t.equity[s]) - 6 * d, 12 * d, 12 * d);
+    });
+    // now line, dimmed future, runner
+    ctx.strokeStyle = '#F4F1EA'; ctx.setLineDash([6 * d, 6 * d]); ctx.lineWidth = 2 * d; ctx.beginPath(); ctx.moveTo(X(i), 0); ctx.lineTo(X(i), H); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(18,16,28,0.55)'; ctx.fillRect(X(i) + d, 0, W, H);
     if (runner.complete) ctx.drawImage(runner, X(i) - 24 * d, Y(t.equity[i]) - 52 * d, 48 * d, 48 * d);
     const bal = t.equity[i], chg = 100 * (bal / t.start_cash - 1);
-    $('#s-date').textContent = t.dates[i].slice(0, 10); $('#s-day').textContent = i + 1;
-    $('#s-bal').textContent = money(bal); $('#s-chg').textContent = pct(chg.toFixed(1)); $('#s-chg').style.color = chg >= 0 ? 'var(--green)' : 'var(--red)';
-    $('#s-hold').textContent = money(t.hold[i]); $('#s-speed').textContent = 'x' + sim.speed;
+    $('#s-date').textContent = niceDate(t.dates[i]); $('#s-day').textContent = i + 1;
+    $('#s-bal').textContent = money(bal); $('#s-chg').textContent = pct(Math.round(chg)); $('#s-chg').style.color = chg >= 0 ? 'var(--green)' : 'var(--red)';
+    $('#s-speed').textContent = 'x' + sim.speed;
+    document.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('on', +b.dataset.speed === sim.speed));
   }
   const runner = new Image(); runner.src = 'data:image/svg+xml;base64,' + btoa(sprite(n.color, 3));
 
@@ -316,32 +369,40 @@ async function renderSim(id) {
     }
     draw(); sim.raf = requestAnimationFrame(tick);
   }
+  const play = on => { sim.playing = on; $('#c-play').textContent = on ? 'PAUSE' : 'PLAY'; };
   function showPain() {
-    $('#c-play').textContent = 'PLAY';
+    play(false);
     const m = $('#pain'); m.classList.remove('hidden');
-    m.innerHTML = `<div style="display:flex;gap:12px;align-items:center"><span class="tag" style="background:var(--red)">PAIN MOMENT</span><span class="label">PAUSED</span></div>
-      <h2>YOU'RE DOWN ${Math.abs(pain.drawdown_pct)}%.</h2>
+    m.innerHTML = `<div class="mh"><span class="tag" style="background:var(--red)">PAIN MOMENT</span><span class="label">PAUSED</span></div>
+      <h2>YOU'RE DOWN ${Math.abs(Math.round(pain.drawdown_pct))}%.</h2>
       <p>${esc(n.name)} ${pain.losing_streak ? `just lost ${pain.losing_streak} trade${pain.losing_streak === 1 ? '' : 's'} in a row` : 'is in the deepest hole of the whole run'}. Keep following the rules, or quit now?</p>
       <div class="row"><button class="btn" id="keep">KEEP GOING</button><button class="btn ghost" id="quit">QUIT</button></div>
       <small>After you choose, we show where each path ended.</small>`;
-    $('#keep').onclick = () => { m.classList.add('hidden'); sim.playing = true; $('#c-play').textContent = 'PAUSE'; };
-    $('#quit').onclick = () => { m.classList.add('hidden'); sim.quitAt = Math.floor(sim.i); sim.playing = true; $('#c-play').textContent = 'PAUSE'; };
+    $('#keep').onclick = () => { m.classList.add('hidden'); play(true); };
+    $('#quit').onclick = () => { m.classList.add('hidden'); sim.quitAt = Math.floor(sim.i); play(true); };
   }
   function showEnding() {
-    $('#c-play').textContent = 'PLAY';
-    const e = $('#ending'), r = n.results || {};
+    play(false);
+    const e = $('#ending'), r = n.results || {}, last = t.equity[N - 1];
     const quitBal = sim.quitAt != null ? t.equity[sim.quitAt] : null;
     e.classList.remove('hidden');
-    e.innerHTML = `
-      <div class="stat panel"><div class="label">${esc(n.name).toUpperCase()} ENDED</div><div class="val" style="color:var(--gold)">${money(t.equity[N - 1])}</div></div>
-      ${quitBal != null ? `<div class="stat panel"><div class="label">IF YOU QUIT</div><div class="val">${money(quitBal)}</div></div>` : ''}
-      <div class="stat panel"><div class="label">JUST HOLDING</div><div class="val" style="color:var(--cyan)">${money(t.hold[N - 1])}</div></div>
-      <div class="stat panel"><div class="label">RANDOM TRADERS BETTER</div><div class="val">${r.share_random_better}%</div></div>
-      <div class="stat panel"><div class="label">VERDICT</div><div class="val"><span class="tag ${vClass(n.verdict)}">${esc(n.verdict).toUpperCase()}</span></div></div>`;
+    e.innerHTML = `<div class="mh"><span class="tag gold">THE END</span><span class="label">${niceDate(t.dates[N - 1])}</span></div>
+      <h2>${NAME} ENDED WITH ${money(last)}.</h2>
+      <div class="res">
+        <div><span>${NAME}</span><span style="color:#8A6A10">${money(last)}</span></div>
+        ${quitBal != null ? `<div><span>IF YOU QUIT</span><span>${money(quitBal)}</span></div>` : ''}
+        <div><span>JUST HOLDING ${coin}</span><span>${money(t.hold[N - 1])}</span></div>
+        <div><span>RANDOM TRADERS BETTER</span><span>${r.share_random_better ?? 'N/A'}%</span></div>
+        <div><span>VERDICT</span><span class="tag ${vClass(n.verdict)}">${esc(n.verdict).toUpperCase()}</span></div>
+      </div>
+      <div class="row"><button class="btn" id="again">RACE AGAIN</button><a class="btn ghost" href="#/npc/${id}">BACK</a></div>`;
+    $('#again').onclick = restart;
   }
-  $('#c-play').onclick = () => { if (sim.i >= N - 1) return; sim.playing = !sim.playing; $('#c-play').textContent = sim.playing ? 'PAUSE' : 'PLAY'; $('#pain').classList.add('hidden'); };
+  function restart() { Object.assign(sim, { i: 0, painShown: false, quitAt: null }); $('#ending').classList.add('hidden'); $('#pain').classList.add('hidden'); play(true); }
+  $('#c-play').onclick = () => { if (sim.i >= N - 1) return; play(!sim.playing); $('#pain').classList.add('hidden'); };
   document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => sim.speed = +b.dataset.speed);
-  $('#c-restart').onclick = () => { Object.assign(sim, { i: 0, playing: true, painShown: false, quitAt: null }); $('#ending').classList.add('hidden'); $('#pain').classList.add('hidden'); $('#c-play').textContent = 'PAUSE'; };
+  $('#s-speedtile').onclick = () => { sim.speed = SPEEDS[(SPEEDS.indexOf(sim.speed) + 1) % SPEEDS.length]; SFX.click(); };
+  $('#c-restart').onclick = restart;
   tick();
 }
 
