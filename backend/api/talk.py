@@ -5,6 +5,7 @@ prompt forbids inventing any other. Without GEMINI_API_KEY, a plain template ans
 """
 
 import json
+import re
 import os
 import urllib.request
 
@@ -92,22 +93,32 @@ def route_question(question: str) -> dict | None:
 
 
 def talk(record: dict, trades: dict | None, question: str, history: list | None = None) -> dict:
-    """Route the question, then answer it. Returns {"answer", "route"} for the API."""
-    routed = route_question(question) if os.environ.get("GEMINI_API_KEY") else None
+    """Route the question, then answer it. Returns {"answer", "route", "offline"} for the API.
+
+    offline is None when Hydrogen answered, "no_key" when the server has no GEMINI_API_KEY, or
+    "gemini_error" when the call failed; then a question-aware template answers from the same facts.
+    """
+    turn = sum(1 for h in (history or []) if h.get("role") != "user")
+    if not os.environ.get("GEMINI_API_KEY"):
+        return {"answer": template_answer(facts(record, trades), question, turn), "route": None, "offline": "no_key"}
+    routed = route_question(question)
     kind = routed["route"] if routed else None
-    return {"answer": answer(record, trades, question, history, kind), "route": kind}
+    try:
+        return {"answer": answer(record, trades, question, history, kind), "route": kind, "offline": None}
+    except Exception:
+        return {"answer": template_answer(facts(record, trades), question, turn), "route": kind,
+                "offline": "gemini_error"}
 
 
 def answer(record: dict, trades: dict | None, question: str, history: list | None = None,
            kind: str | None = None) -> str:
+    """Hydrogen's in-character answer. Raises if Gemini fails or returns nothing."""
     f = facts(record, trades)
     if kind == "trade" and trades:
         f["trades"] = [{k: t.get(k) for k in ("date", "side", "price", "rule", "timestamp_s", "pnl_pct")}
                        for t in trades.get("trades", [])[-12:]]
     focus = f"\nThis question: {FOCUS[kind]}\n" if kind in FOCUS else ""
-    key = os.environ.get("GEMINI_API_KEY")
-    if not key:
-        return template_answer(f, question)
+    key = os.environ["GEMINI_API_KEY"]
     contents = []
     for h in (history or [])[-8:]:
         contents.append({"role": "user" if h["role"] == "user" else "model", "parts": [{"text": h["text"]}]})
@@ -124,28 +135,67 @@ def answer(record: dict, trades: dict | None, question: str, history: list | Non
     }
     req = urllib.request.Request(URL.format(model=MODEL), data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json", "x-goog-api-key": key})
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.load(resp)
-        parts = data["candidates"][0].get("content", {}).get("parts", [])
-        text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
-        return text or template_answer(f, question)
-    except Exception as e:  # keep the demo alive
-        return template_answer(f, question) + f" (offline answer: {type(e).__name__})"
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.load(resp)
+    parts = data["candidates"][0].get("content", {}).get("parts", [])
+    text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+    if not text:
+        raise RuntimeError("Hydrogen returned no text")
+    return text
 
 
-def template_answer(f: dict, q: str) -> str:
+def _money(v) -> str:
+    return f"${v:,.0f}" if isinstance(v, (int, float)) else "an unknown amount"
+
+
+def template_answer(f: dict, q: str, turn: int = 0) -> str:
+    """Offline answer from the saved facts only, matched to what was asked. Used without Gemini.
+
+    Every number comes from FACTS, like the Gemini answers. Questions it can't place get a
+    different fact each turn instead of the same summary.
+    """
     ql = q.lower()
+    has = lambda *words: any(re.search(r"\b" + re.escape(w), ql) for w in words)  # word starts only
+    rules = f.get("rules") or []
+    claims = f.get("claim_checks") or []
     if f["verdict"] == "Untestable":
-        return f"Honestly? Nobody can test me. {f.get('untestable_reason') or ''}".strip()
-    if "worst" in ql or "drop" in ql or "lose" in ql:
-        w = f.get("worst_moment") or {}
-        return f"My worst moment was {w.get('date')}: down {w.get('drawdown_pct')}% after {w.get('losing_streak')} losses in a row."
+        if has("rule", "strategy", "how"):
+            return "My rules: " + ("; ".join(rules[:3]) if rules else "there aren't any I can code. That's the problem.")
+        return f"Honestly? Nobody can test me. {f.get('untestable_reason') or f.get('verdict_reason') or ''}".strip()
+
+    if re.fullmatch(r"\W*(hi|hello|hey|yo|sup|who are you)\b.{0,15}", ql):
+        return (f"I'm {f['name']}, {f.get('archetype') or 'a trader'} from \"{f.get('video_title')}\". "
+                f"Ask me about my rules, my worst year, or whether I beat the random traders.")
     for y, v in (f.get("return_by_year_pct") or {}).items():
         if y in ql:
             return f"In {y} I made {v}%."
-    if "rule" in ql or "strategy" in ql:
-        return "My rules: " + "; ".join(f["rules"][:3])
-    return (f"I turned $10,000 into ${f['final_balance']:,.0f}. Just holding would be "
-            f"${f['just_holding_final']:,.0f}, and {f['pct_random_traders_did_better']}% of random "
-            f"traders beat me. Verdict: {f['verdict']}.")
+    if has("worst", "drop", "drawdown", "lose", "lost", "pain", "survive"):
+        w = f.get("worst_moment") or {}
+        return (f"My worst moment was {w.get('date')}: down {w.get('drawdown_pct')}% after "
+                f"{w.get('losing_streak')} losses in a row.")
+    if has("real", "edge", "luck", "verdict", "work", "legit", "good", "scam"):
+        return f"My verdict is {f['verdict']}. {f.get('verdict_reason') or ''}".strip()
+    if has("random", "hold", "holding", "compare", "beat", "better"):
+        return (f"Just holding would have made {_money(f.get('just_holding_final'))} against my "
+                f"{_money(f.get('final_balance'))}, and {f.get('pct_random_traders_did_better')}% of "
+                f"1,000 random traders did better than me.")
+    if has("trade", "win", "how many", "often"):
+        return (f"I made {f.get('n_trades')} trades and won {f.get('win_rate_pct')}% of them. "
+                f"My worst drop was {f.get('max_drawdown_pct')}%.")
+    if has("claim", "guru", "video", "said", "promise", "true"):
+        if claims:
+            c = claims[turn % len(claims)]
+            return f"The video claimed \"{c['claim']}\". My backtest says: {c['status']}. {c['note']}"
+        return "The video made no claims I could check."
+    if has("rule", "strategy", "how do you", "when do you", "buy", "sell", "entry", "exit", "stop"):
+        return "My rules: " + "; ".join(rules[:3])
+    tested = (f.get("tested") or {})
+    rotation = [
+        (f"I turned $10,000 into {_money(f.get('final_balance'))}, while just holding made "
+         f"{_money(f.get('just_holding_final'))}. Verdict: {f['verdict']}."),
+        f"I only talk numbers from my backtest. My verdict is {f['verdict']}: {f.get('verdict_reason') or ''}".strip(),
+        (f"I was tested on {f.get('market_tested_on')} from {tested.get('start', 'the start')} to "
+         f"{tested.get('end', 'today')}, {f.get('n_trades')} trades, {f.get('win_rate_pct')}% wins."),
+        "Try asking me about my worst year, my rules, or whether I beat the random traders.",
+    ]
+    return rotation[turn % len(rotation)]

@@ -107,7 +107,9 @@ def run_code(code: str, df: pd.DataFrame, readings: list[dict]) -> tuple[list[np
     with tempfile.TemporaryDirectory(prefix="guru-sandbox-") as tmp:
         tmp = Path(tmp)
         (tmp / "strategy.py").write_text(code)
-        df.assign(timestamp=(df.index.astype("int64") // 10**9)).to_csv(tmp / "prices.csv", index=False)
+        # Unix seconds, whatever unit pandas stores the index in (pandas 3 uses microseconds).
+        seconds = (df.index - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(seconds=1)
+        df.assign(timestamp=seconds).to_csv(tmp / "prices.csv", index=False)
         (tmp / "readings.json").write_text(json.dumps(readings))
         env = {"PATH": os.environ.get("PATH", ""), "HOME": str(tmp), "PYTHONHASHSEED": "0"}
         try:

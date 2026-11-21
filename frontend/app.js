@@ -230,7 +230,13 @@ async function renderRoom(id) {
     if (!q) return; $('#chips')?.classList.add('hidden'); addMsg('user', q); $('#q').value = '';
     const thinking = addMsg('npc', '…');
     try {
-      const { answer } = await post(`/api/npcs/${id}/talk`, { question: q, history });
+      const { answer, offline } = await post(`/api/npcs/${id}/talk`, { question: q, history });
+      if (offline && !window._offlineNoted) {
+        window._offlineNoted = true;
+        addMsg('note', offline === 'no_key'
+          ? 'Offline mode: this server has no GEMINI_API_KEY, so answers are simple templates from the saved numbers. Add the key to .env and restart.'
+          : 'Gemini did not answer, so this reply is a simple template from the saved numbers.');
+      }
       thinking.textContent = answer; $('#dlg').scrollTop = 1e6; history.push({ role: 'user', text: q }, { role: 'npc', text: answer });
       setSay(answer); speak(answer, id);
     } catch (e) { thinking.textContent = 'Error: ' + e.message; }

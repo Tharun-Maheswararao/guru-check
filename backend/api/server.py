@@ -26,6 +26,9 @@ from backend.npc_store import store
 
 ROOT = Path(__file__).resolve().parents[2]
 app = FastAPI(title="Guru Check")
+if not os.environ.get("GEMINI_API_KEY"):
+    print("WARNING: no GEMINI_API_KEY in the environment or .env. NPCs will use offline template "
+          "answers, and births, portraits and Gemini voice won't work.", flush=True)
 JOBS: dict[str, dict] = {}
 
 

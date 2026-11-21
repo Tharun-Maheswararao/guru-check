@@ -92,6 +92,17 @@ class SandboxTests(unittest.TestCase):
         self.assertIsNone(codegen.problem_with(pos, rep))
         self.assertFalse(np.array_equal(pos[0], pos[1]))
 
+    def test_sandbox_sees_the_real_dates(self):
+        idx = pd.date_range("2024-03-01", periods=600, freq="5min", tz="UTC")
+        df = pd.DataFrame({"open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0}, index=idx)
+        for unit in ["ns", "us", "s"]:  # however pandas stores the dates
+            d = df.copy()
+            d.index = d.index.as_unit(unit)
+            code = "def generate_positions(df, reading):\n    return ((df.index.hour == 8) & (df.index.year == 2024)).astype(int).tolist()\n"
+            pos, rep = codegen.run_code(code, d, [{}])
+            expected = ((idx.hour == 8) & (idx.year == 2024)).astype(int)
+            self.assertTrue(np.array_equal(pos[0], expected), unit)
+
     def test_peeking_and_forbidden_imports_are_caught(self):
         df = prices(400)
         pos, rep = codegen.run_code(PEEK, df, [{}])
