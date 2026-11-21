@@ -68,9 +68,34 @@ def annual_return_pct(rec: dict) -> float | None:
     return round(100 * ((final / 10000) ** (1 / years) - 1), 1)
 
 
+ART_DIR = ROOT / "frontend" / "art"
+
+
+def portrait_file(rec: dict) -> Path | None:
+    """The NPC's portrait on disk. Demo NPCs without one (data/ is gitignored, so old or fresh local
+    data has no portrait_path) use the bundled anime art in frontend/art/<name>.jpg."""
+    raw = rec.get("portrait_path")
+    if raw:
+        for p in (Path(raw), ROOT / raw):
+            if p.is_file():
+                return p
+    if rec.get("demo"):
+        art = ART_DIR / ("-".join(str(rec.get("name", "")).lower().split()) + ".jpg")
+        if art.is_file():
+            return art
+    return None
+
+
+def _with_portrait(rec: dict) -> dict:
+    """Copy of the record whose portrait_path is set only when there is a picture to show."""
+    p = portrait_file(rec)
+    return rec | {"portrait_path": str(p) if p else ""}
+
+
 def _card(rec: dict) -> dict:
     r = rec.get("results") or {}
     years = tested_years(rec)
+    rec = _with_portrait(rec)
     return {k: rec.get(k) for k in ("npc_id", "name", "color", "archetype", "verdict", "portrait_path", "demo")} | {
         "return_pct": round(100 * (r["final_balance"] / 10000 - 1), 1) if r.get("final_balance") else None,
         "annual_return_pct": annual_return_pct(rec),
@@ -90,7 +115,7 @@ def get_npc(npc_id: str):
     rec = store.get_npc(npc_id)
     if not rec:
         raise HTTPException(404, "No such NPC")
-    return rec
+    return _with_portrait(rec)
 
 
 @app.get("/api/npcs/{npc_id}/trades")
@@ -198,8 +223,8 @@ def npc_speak(npc_id: str, body: SpeakIn):
 @app.get("/api/npcs/{npc_id}/portrait")
 def portrait(npc_id: str):
     rec = store.get_npc(npc_id)
-    p = Path(rec.get("portrait_path") or "") if rec else None
-    if not p or not p.is_file():
+    p = portrait_file(rec) if rec else None
+    if not p:
         raise HTTPException(404, "No portrait")
     return FileResponse(p)
 
