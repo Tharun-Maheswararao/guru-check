@@ -378,6 +378,10 @@ async function renderSim(id) {
   const lo = Math.min(...all) * 0.95, hi = Math.max(...all) * 1.05, logY = hi / lo > 8;
   sim = { i: 0, speed: 4, playing: true, painShown: false, quitAt: null, raf: 0 };
   let stride = 1;
+  // Year markers: the first chart point of each calendar year, plus real days since the start.
+  const toMs = s => Date.parse(String(s).length > 10 ? String(s).replace(' ', 'T') + 'Z' : s + 'T00:00:00Z');
+  const t0 = toMs(t.dates[0]);
+  const years = t.dates.map((s, k) => k === 0 || s.slice(0, 4) !== t.dates[k - 1].slice(0, 4) ? [k, s.slice(0, 4)] : null).filter(Boolean);
 
   function size() {
     const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio;
@@ -407,6 +411,15 @@ async function renderSim(id) {
     ctx.strokeStyle = '#2C2742'; ctx.lineWidth = 2 * d; ctx.setLineDash([8 * d, 8 * d]);
     for (let y = 182 * d; y < H - 20 * d; y += 100 * d) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
     ctx.setLineDash([]); ctx.strokeStyle = '#4A4366'; ctx.beginPath(); ctx.moveTo(0, Y(t.start_cash)); ctx.lineTo(W, Y(t.start_cash)); ctx.stroke();
+    // year lines and labels along the bottom, thinned so labels never overlap
+    ctx.font = `${10 * d}px "Press Start 2P", monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    let lastX = -Infinity;
+    years.forEach(([k, y]) => {
+      const x = X(k);
+      if (k > 0) { ctx.strokeStyle = '#2C2742'; ctx.lineWidth = 2 * d; ctx.beginPath(); ctx.moveTo(x, 70 * d); ctx.lineTo(x, H - 74 * d); ctx.stroke(); }
+      if (x - lastX < 56 * d) return;
+      ctx.fillStyle = k <= i ? '#C9C3E0' : '#5E5878'; ctx.fillText(y, Math.max(x, 28 * d), H - 58 * d); lastX = x;
+    });
     // random crowd band
     ctx.fillStyle = 'rgba(143,136,173,0.18)'; ctx.beginPath();
     for (let k = 0; k <= i; k++) ctx[k ? 'lineTo' : 'moveTo'](X(k), Y(t.random_band.p90[k]));
@@ -424,7 +437,8 @@ async function renderSim(id) {
     ctx.fillStyle = 'rgba(18,16,28,0.55)'; ctx.fillRect(X(i) + d, 0, W, H);
     if (runner.complete) ctx.drawImage(runner, X(i) - 24 * d, Y(t.equity[i]) - 52 * d, 48 * d, 48 * d);
     const bal = t.equity[i], chg = 100 * (bal / t.start_cash - 1);
-    $('#s-date').textContent = niceDate(t.dates[i]); $('#s-day').textContent = i + 1;
+    $('#s-date').textContent = niceDate(t.dates[i]);
+    $('#s-day').textContent = Math.floor((toMs(t.dates[i]) - t0) / 864e5) + 1;  // real days since the start
     $('#s-bal').textContent = money(bal); $('#s-chg').textContent = pct(Math.round(chg)); $('#s-chg').style.color = chg >= 0 ? 'var(--green)' : 'var(--red)';
     $('#s-speed').textContent = 'x' + sim.speed;
     document.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('on', +b.dataset.speed === sim.speed));
