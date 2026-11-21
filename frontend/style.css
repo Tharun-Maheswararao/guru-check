@@ -63,6 +63,12 @@ main{min-height:calc(100vh - var(--hud))}
 #birth-steps li.now:before{background:var(--gold);animation:blink .5s steps(2) infinite}
 #birth-steps li.todo{color:var(--muted);opacity:.5}#birth-steps li.todo:before{background:var(--line)}
 #birth-steps li.fail:before{background:var(--red)}
+.birth-tl{width:100%;display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:3px solid var(--line)}
+.birth-tl .tl-h{font-family:var(--px);font-size:9px;line-height:12px;color:var(--muted);display:flex;justify-content:space-between;gap:12px}
+.birth-tl .tl-h span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.birth-tl .nowrule{font-size:14px;line-height:19px;color:var(--soft);min-height:38px}
+.birth-tl .nowrule b{font-family:var(--px);font-size:9px;margin-right:6px}
+.birth-tl .pin.lit{outline:3px solid var(--light)}
 .egg.born{animation:pop .4s steps(3) 2}
 @keyframes pop{50%{transform:scale(1.25)}}
 @keyframes blink{50%{opacity:0}}

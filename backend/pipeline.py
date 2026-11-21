@@ -160,9 +160,22 @@ def _load_backtest_and_judge() -> Callable:
         ) from e
 
 
+def birth_preview(rules: dict, run_dir: Path) -> dict:
+    """What the birth screen shows while the backtest runs: the rules pinned on the video timeline."""
+    fields = npc_fields(rules)
+    video = dict(fields["source_videos"][0])
+    if not video.get("duration_s") and (run_dir / "watch.json").exists():
+        video["duration_s"] = json.loads((run_dir / "watch.json").read_text())["video"]["duration_s"]
+    return {"video": video, "strategy_name": fields["strategy_name"], "market": fields["market"],
+            "testable": rules["testable"], "untestable_reason": rules["untestable_reason"],
+            "rules_timeline": fields["rules_timeline"]}
+
+
 def birth_npc(url: str, on_step: OnStep | None = None, data_dir: Path = DATA_DIR,
               llm_json: Callable = llm.hydrogen_json, decide: Callable = llm.decide,
-              backtest_and_judge: Callable | None = None) -> dict:
+              backtest_and_judge: Callable | None = None,
+              on_rules: Callable[[dict], None] | None = None,
+              make_portrait: Callable[[dict], str] | None = None) -> dict:
     """Turn a YouTube link into a saved NPC record, reporting each step through on_step.
 
     - A video already in the library returns its NPC.
@@ -170,6 +183,10 @@ def birth_npc(url: str, on_step: OnStep | None = None, data_dir: Path = DATA_DIR
     - Otherwise Person 2's backtest_and_judge(rules, on_step) backtests, races the random traders,
       judges, and returns (npc_record, trades). It should report the backtest, randoms and judge
       steps. This function fills in the rule fields (npc_fields), saves both files, and reports born.
+    - on_rules(preview), if given, gets birth_preview() as soon as the rules exist, so the UI can
+      show them on the video timeline while the backtest runs.
+    - make_portrait(record) -> path, if given, draws the portrait. If it fails the NPC is still
+      born and the UI shows its pixel sprite.
     """
     on_step = on_step or _no_step
     store = Store(data_dir)
@@ -184,7 +201,10 @@ def birth_npc(url: str, on_step: OnStep | None = None, data_dir: Path = DATA_DIR
                  on_step=on_step)
     decision = result["match"]
     if result["rules"] is None:  # extracted earlier, but no NPC was born yet
-        on_step("match", "Rules for this video were already extracted")
+        on_step("watch", "Already watched")
+        on_step("scan", "Already scanned")
+        on_step("extract", "Rules for this video were already extracted")
+        on_step("match", "Picking up where the last birth stopped")
 
     npc = store.npc_for_strategy(decision["strategy_id"])
     if npc is not None:  # joined a strategy whose NPC is already born
@@ -193,9 +213,17 @@ def birth_npc(url: str, on_step: OnStep | None = None, data_dir: Path = DATA_DIR
 
     # Always birth from the saved strategy, which lists every video that joined it.
     rules = store.get_strategy(decision["strategy_id"]) or result["rules"]
+    if on_rules is not None:
+        on_rules(birth_preview(rules, Path(result["run_dir"])))
     finish = backtest_and_judge or _load_backtest_and_judge_reporting(on_step)
     record, trades = finish(rules, on_step)
     record = {**record, **npc_fields(rules)}
+    if make_portrait is not None and not record.get("portrait_path"):
+        on_step("born", "Drawing a portrait")
+        try:
+            record["portrait_path"] = make_portrait(record)
+        except Exception:
+            pass  # keep the pixel sprite
     store.save_npc(record, trades)
     on_step("born", f"{record.get('name') or 'A new trader'} is born")
     return record

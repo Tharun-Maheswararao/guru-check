@@ -352,6 +352,20 @@ class BirthTests(unittest.TestCase):
         self.assertEqual(Store(self.data).get_trades(rec["npc_id"])["equity"], [10000])
         self.assertEqual([n["npc_id"] for n in Store(self.data).npcs()], [rec["npc_id"]])  # trades file not listed
 
+    def test_rules_preview_reaches_the_birth_screen_before_the_backtest(self):
+        seen = []
+
+        def finish(rules, on_step):
+            self.assertEqual(len(seen), 1)  # preview arrived before the backtest started
+            return fake_backtest_and_judge()(rules, on_step)
+
+        self.birth(URL, backtest_and_judge=finish, on_rules=seen.append)
+        preview = seen[0]
+        self.assertEqual(preview["video"]["duration_s"], 120)
+        self.assertEqual(preview["strategy_name"], "EMA golden cross")
+        self.assertTrue(preview["testable"])
+        self.assertIn("entry", [x["kind"] for x in preview["rules_timeline"]])
+
     def test_same_link_returns_existing_npc_without_model_calls(self):
         first = self.birth(URL, backtest_and_judge=fake_backtest_and_judge())
         self.steps.clear()
@@ -390,7 +404,7 @@ class BirthTests(unittest.TestCase):
         rec = self.birth(URL, llm_json=lambda *a, **k: self.fail("should reuse saved rules"),
                          decide=lambda *a: self.fail("should reuse saved rules"),
                          backtest_and_judge=fake_backtest_and_judge())
-        self.assertEqual(self.steps[0], "match")
+        self.assertEqual(self.steps[:4], ["watch", "scan", "extract", "match"])
         self.assertEqual(self.steps[-1], "born")
         self.assertTrue(Store(self.data).get_npc(rec["npc_id"]))
 

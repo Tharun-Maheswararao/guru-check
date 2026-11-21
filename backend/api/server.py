@@ -15,11 +15,13 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend.api.talk import answer
+from backend.api.portrait import generate_portrait
+from backend.api.talk import talk as talk_to_npc
+from backend.api.voice import speak
 from backend.npc_store import store
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -70,7 +72,7 @@ def talk(npc_id: str, body: TalkIn):
     rec = store.get_npc(npc_id)
     if not rec:
         raise HTTPException(404, "No such NPC")
-    return {"answer": answer(rec, store.get_trades(npc_id), body.question, body.history)}
+    return talk_to_npc(rec, store.get_trades(npc_id), body.question, body.history)
 
 
 @app.post("/api/birth")
@@ -79,7 +81,7 @@ def birth(body: BirthIn):
     if existing:  # same-link matching, always works
         return {"status": "exists", "npc_id": existing["npc_id"]}
     job_id = uuid.uuid4().hex[:8]
-    JOBS[job_id] = {"status": "running", "steps": [], "npc_id": None, "error": None}
+    JOBS[job_id] = {"status": "running", "steps": [], "npc_id": None, "error": None, "preview": None}
 
     def on_step(step, detail=""):
         JOBS[job_id]["steps"].append({"step": step, "detail": detail, "t": time.time()})
@@ -98,7 +100,8 @@ def birth(body: BirthIn):
             mock_birth(body.url, on_step, job_id)
             return
         try:
-            rec = birth_npc(body.url, on_step)
+            rec = birth_npc(body.url, on_step, on_rules=lambda p: JOBS[job_id].update(preview=p),
+                            make_portrait=None if os.environ.get("PORTRAITS") == "0" else generate_portrait)
             JOBS[job_id].update(status="done", npc_id=rec["npc_id"])
         except Exception as e:
             JOBS[job_id].update(status="error", error=f"{type(e).__name__}: {e}")
@@ -135,6 +138,24 @@ def mock_birth(url, on_step, job_id):
     store.save_npc(rec, trades)
     on_step("born", f"{rec['name']} is born")
     JOBS[job_id].update(status="done", npc_id=rec["npc_id"])
+
+
+class SpeakIn(BaseModel):
+    text: str
+
+
+@app.post("/api/npcs/{npc_id}/speak")
+def npc_speak(npc_id: str, body: SpeakIn):
+    """MP3 of the NPC saying text, in its own Gemini voice. 503 tells the UI to use browser speech."""
+    rec = store.get_npc(npc_id)
+    if not rec:
+        raise HTTPException(404, "No such NPC")
+    if not os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_VOICE") == "0":
+        raise HTTPException(503, "Gemini voice is off")
+    try:
+        return Response(content=speak(body.text, rec), media_type="audio/mpeg")
+    except Exception as e:
+        raise HTTPException(503, f"Gemini voice failed: {type(e).__name__}")
 
 
 @app.get("/api/npcs/{npc_id}/portrait")

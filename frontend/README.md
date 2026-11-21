@@ -29,5 +29,21 @@ and 1,000 random traders, Pain Moment, ending). Press `M` to mute sounds. Stage 
    `on_step(step, detail)` for each step: watch, scan, extract, match, backtest, randoms, judge, born.
    `backend/npc_store/store.py` has `save_npc(record, trades)` to write both files.
 
-Until 3 exists, run with `MOCK_BIRTH=1`. Talk uses `GEMINI_TALK_MODEL` (Hydrogen model id) and
+`birth_npc` is in `backend/pipeline.py` now. It runs Watcher, Scanner, Extractor and Matcher, then
+waits for Person 2's `backend/backtester/birth.py`. Until that exists, run with `MOCK_BIRTH=1`.
+
+## Gemini features
+
+- **Rules on the timeline during birth.** As soon as the rules exist, the job's `preview` has the
+  strategy name, video length and `rules_timeline`, and the birth screen pins them and reads them
+  out one by one while the backtest runs.
+- **Question routing.** `/talk` first sorts the question with the Decisions API
+  (`backend/scanner/router.py`: trade, performance, period, comparison, rules, video, other) and tells
+  Hydrogen what to focus on. The response includes `route`.
+- **Portraits.** New NPCs get a Gemini image (`gemini-nano-banana-2.1`) at birth, saved to
+  `data/portraits/`. The prompt forbids resembling any real person. Backfill existing NPCs with
+  `python -m backend.api.portrait`. Turn off with `PORTRAITS=0`; the pixel sprite is the fallback.
+- **Voice.** NPC answers are spoken by Gemini text to speech (`gemini-3.8-flash-tts`, one voice per
+  NPC color) through `POST /api/npcs/{id}/speak`, falling back to the browser voice. Turn off with
+  `GEMINI_VOICE=0`. Press `M` to mute. Talk uses `GEMINI_TALK_MODEL` (Hydrogen model id) and
 answers only from the saved numbers; without a key it uses template answers.

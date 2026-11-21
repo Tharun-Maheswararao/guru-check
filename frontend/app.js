@@ -65,7 +65,8 @@ function setNav(which) {
   if (current) { $('#nav-room').href = `#/npc/${current}`; $('#nav-sim').href = `#/sim/${current}`; }
 }
 async function route() {
-  stopSim(); window.speechSynthesis?.cancel();
+  stopSim(); window.speechSynthesis?.cancel(); voiceAudio?.pause();
+  $('#birth').classList.add('hidden'); clearInterval($('#birth-tl')._t);
   const [, page, id] = location.hash.split('/');
   try {
     if (page === 'npc' && id) { current = id; setNav('room'); await renderRoom(id); }
@@ -107,6 +108,7 @@ const BIRTH_STEPS = [['watch', 'Watch the video'], ['scan', 'Scan for rules'], [
 async function birth(url) {
   const ov = $('#birth'), steps = $('#birth-steps'), err = $('#birth-error');
   ov.classList.remove('hidden'); steps.innerHTML = ''; err.textContent = '';
+  const tl = $('#birth-tl'); tl.classList.add('hidden'); tl.innerHTML = ''; clearInterval(tl._t);
   $('#birth-sprite').innerHTML = sprite(['gold', 'green', 'red', 'cyan', 'violet'][Math.floor(Math.random() * 5)], 8);
   $('#birth-close').onclick = () => ov.classList.add('hidden');
   try {
@@ -120,12 +122,38 @@ async function birth(url) {
         const st = !seen[k] ? 'todo' : (k === lastStep && j.status === 'running') ? 'now' : (k === lastStep && j.status === 'error') ? 'fail' : 'done';
         return `<li class="${st}">${esc(seen[k] || label)}</li>`;
       }).join('');
+      if (j.preview && !tl.innerHTML) showBirthTimeline(tl, j.preview);
+      if (j.status !== 'running') clearInterval(tl._t);
       if (j.status === 'done') { SFX.born(); $('#birth-sprite').classList.add('born'); setTimeout(() => { ov.classList.add('hidden'); location.hash = `#/npc/${j.npc_id}`; }, 1200); }
       else if (j.status === 'error') err.textContent = j.error;
       else setTimeout(poll, 1000);
     };
     poll();
   } catch (e) { err.textContent = e.message; }
+}
+
+// The rules appear on the video timeline while the backtest runs, read out one pin at a time.
+function showBirthTimeline(el, p) {
+  const KIND = { entry: 'ENTRY', exit: 'EXIT', stop_loss: 'STOP LOSS', filters: 'FILTER', claim: 'BOLD CLAIM' };
+  const pins = p.rules_timeline || [], v = p.video || {};
+  const dur = v.duration_s || Math.max(60, ...pins.map(x => x.timestamp_s + 30));
+  const name = p.strategy_name ? `"${esc(p.strategy_name).toUpperCase()}"` : 'THE RULES';
+  el.innerHTML = `
+    <div class="tl-h"><span>${name} · FOUND IN THE VIDEO</span><span>${ts(dur)}</span></div>
+    <div class="track"><div class="bar"></div>${pins.map((x, k) => `
+      <a class="pin k-${x.kind}" data-k="${k}" style="left:${Math.min(98.5, Math.max(1.5, 100 * x.timestamp_s / dur))}%"
+         title="${esc(KIND[x.kind] || x.kind)} ${ts(x.timestamp_s)}: ${esc(x.rule)}" href="${videoAt(v.url, x.timestamp_s)}" target="_blank"></a>`).join('')}</div>
+    <div class="nowrule" id="nowrule">${p.testable ? '' : `<b class="c-claim">UNTESTABLE</b>${esc(p.untestable_reason || '')}`}</div>`;
+  el.classList.remove('hidden');
+  if (!p.testable || !pins.length) return;
+  let k = 0;
+  const show = () => {
+    const x = pins[k % pins.length];
+    el.querySelectorAll('.pin').forEach(a => a.classList.toggle('lit', +a.dataset.k === k % pins.length));
+    $('#nowrule').innerHTML = `<b class="c-${x.kind}" style="color:var(--${{ entry: 'green', exit: 'red', stop_loss: 'cyan', filters: 'muted', claim: 'gold' }[x.kind]})">${KIND[x.kind] || x.kind} ${ts(x.timestamp_s)}</b>${esc(x.rule)}`;
+    k++;
+  };
+  show(); el._t = setInterval(show, 1800);
 }
 
 // ---------- NPC room ----------
@@ -204,7 +232,7 @@ async function renderRoom(id) {
     try {
       const { answer } = await post(`/api/npcs/${id}/talk`, { question: q, history });
       thinking.textContent = answer; $('#dlg').scrollTop = 1e6; history.push({ role: 'user', text: q }, { role: 'npc', text: answer });
-      setSay(answer); speak(answer);
+      setSay(answer); speak(answer, id);
     } catch (e) { thinking.textContent = 'Error: ' + e.message; }
   };
   $('#ask').onsubmit = e => { e.preventDefault(); ask($('#q').value.trim()); };
@@ -255,11 +283,27 @@ function setupMic(ask) {
     rec.start();
   };
 }
-function speak(text) {
+// The NPC speaks in its own Gemini voice; if that fails, the browser's voice takes over.
+let voiceAudio = null;
+async function speak(text, id) {
+  if (muted) return;
+  voiceAudio?.pause(); window.speechSynthesis?.cancel();
+  const npc = $('#npc');
+  if (id) {
+    try {
+      const r = await fetch(`/api/npcs/${id}/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      if (r.ok) {
+        voiceAudio = new Audio(URL.createObjectURL(await r.blob()));
+        voiceAudio.onplay = () => npc?.classList.add('talking');
+        voiceAudio.onended = voiceAudio.onpause = () => npc?.classList.remove('talking');
+        await voiceAudio.play();
+        return;
+      }
+    } catch (e) { /* fall back to the browser voice */ }
+  }
   if (!window.speechSynthesis) return;
-  speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text); u.rate = 1.05; u.pitch = 1.1;
-  const npc = $('#npc'); u.onstart = () => npc?.classList.add('talking'); u.onend = () => npc?.classList.remove('talking');
+  u.onstart = () => npc?.classList.add('talking'); u.onend = () => npc?.classList.remove('talking');
   speechSynthesis.speak(u);
 }
 

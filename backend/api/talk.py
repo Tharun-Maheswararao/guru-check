@@ -60,13 +60,46 @@ Hard rules:
 - If market_stated differs from market_tested_on, say you were tested on {tested}.
 - Never give financial advice. Never claim to be the real video creator.
 - Speak in 1 to 3 short sentences, in character, first person.
-
+{focus}
 FACTS:
 {facts}"""
 
+# What to lean on for each kind of question. The kind comes from the Decisions API router
+# (backend/scanner/router.py), which sorts the question in one fast request.
+FOCUS = {
+    "trade": "The user asks about a specific trade or moment. Use the trades in FACTS (date, side, price, rule, video time).",
+    "performance": "The user asks about overall results. Use final_balance, max_drawdown_pct, win_rate_pct and n_trades.",
+    "period": "The user asks about a period. Use return_by_year_pct and worst_moment.",
+    "comparison": "The user asks how you compare. Use just_holding_final, beat_pct_of_random_traders and pct_random_traders_did_better.",
+    "rules": "The user asks about your rules. Explain them from rules, citing each video time.",
+    "video": "The user asks what the video said. Cite rules and the guru's claims with their video times, and compare the claims to your real results.",
+    "other": "The user is off topic. Answer briefly in character, then steer back to your strategy and results.",
+}
 
-def answer(record: dict, trades: dict | None, question: str, history: list | None = None) -> str:
+
+def route_question(question: str) -> dict | None:
+    """Sort the question with the Decisions API. None if it isn't available, so talk still works."""
+    try:
+        from backend.scanner.router import route
+        return route(question)
+    except Exception:
+        return None
+
+
+def talk(record: dict, trades: dict | None, question: str, history: list | None = None) -> dict:
+    """Route the question, then answer it. Returns {"answer", "route"} for the API."""
+    routed = route_question(question) if os.environ.get("GEMINI_API_KEY") else None
+    kind = routed["route"] if routed else None
+    return {"answer": answer(record, trades, question, history, kind), "route": kind}
+
+
+def answer(record: dict, trades: dict | None, question: str, history: list | None = None,
+           kind: str | None = None) -> str:
     f = facts(record, trades)
+    if kind == "trade" and trades:
+        f["trades"] = [{k: t.get(k) for k in ("date", "side", "price", "rule", "timestamp_s", "pnl_pct")}
+                       for t in trades.get("trades", [])[-12:]]
+    focus = f"\nThis question: {FOCUS[kind]}\n" if kind in FOCUS else ""
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         return template_answer(f, question)
@@ -77,7 +110,7 @@ def answer(record: dict, trades: dict | None, question: str, history: list | Non
     body = {
         "systemInstruction": {"parts": [{"text": SYSTEM.format(
             name=f["name"], personality=f["personality"], verdict=f["verdict"],
-            tested=f["market_tested_on"], facts=json.dumps(f, indent=1))}]},
+            tested=f["market_tested_on"], focus=focus, facts=json.dumps(f, indent=1))}]},
         "contents": contents,
         # Gemini 4 thinks before answering and thinking counts toward maxOutputTokens, so keep
         # thinking low and leave room for it, or the answer comes back empty (finishReason MAX_TOKENS).
