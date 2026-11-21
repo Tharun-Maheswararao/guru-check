@@ -1,0 +1,18 @@
+{
+  "strategy_id": "sha1 of normalized rules",
+  "source_videos": [
+    {"url": "https://www.youtube.com/watch?v=...", "title": "", "upload_date": "2026-05-02"}
+  ],
+  "market": {"stated": "AAPL", "tested_on": "BTC-USD"},
+  "timeframe": "1d",
+  "entry": [{"rule": "enter on retest of demand zone", "timestamp_s": 336}],
+  "exit": [{"rule": "take profit at most recent swing high", "timestamp_s": 341}],
+  "stop_loss": [{"rule": "just below demand zone low", "timestamp_s": 341}],
+  "filters": [{"rule": "risk to reward at least 2.5", "timestamp_s": 453}],
+  "vague_terms": [
+    {"term": "sharp move", "meanings": ["candle > 1.5 ATR", "candle > 2 ATR", "candle > 2.5 ATR"]}
+  ],
+  "claims": [{"text": "80 percent win rate", "timestamp_s": 30}],
+  "testable": true,
+  "untestable_reason": null
+}

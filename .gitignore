@@ -1,0 +1,12 @@
+.env
+data/
+__pycache__/
+node_modules/
+*.parquet
+*.csv
+!eval/videos.csv
+
+# local tooling
+.DS_Store
+.venv/
+venv/
