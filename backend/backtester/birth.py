@@ -118,7 +118,7 @@ def backtest_and_judge(rules: dict, on_step: Callable) -> tuple[dict, dict | Non
     df, timeframe = load_prices(market, rules["timeframe"])
     readings = build_readings(rules.get("vague_terms", []), seed=rules["strategy_id"])
     on_step("backtest", f"Neon is coding {len(readings)} readings of the rules for {market} {timeframe}")
-    coded = code_and_positions(rules, df, timeframe, readings)
+    coded = code_and_positions(rules, df, timeframe, readings, notify=lambda d: on_step("backtest", d))
     ok = [(k, p) for k, p in enumerate(coded["positions"]) if p is not None]
     if not ok:
         return _untestable(rules, "The rules couldn't be turned into working code.", on_step, coded["code"])
@@ -177,6 +177,7 @@ def backtest_and_judge(rules: dict, on_step: Callable) -> tuple[dict, dict | Non
         "readings": summary, "main_reading": readings[main_k], "factor_check": factors,
         "claim_checks": j["claim_checks"], "code_review": j["code_review"],
         "lookahead_free": coded["report"].get("lookahead_free"), "code_path": coded["code_path"],
+        "code_author": coded.get("author"),
         "tested": {"market": market, "timeframe": timeframe, "start": evidence["period"][0],
                    "end": evidence["period"][1], "bars": len(df), "costs_per_trade_pct": 100 * COST},
         "trades_path": "",

@@ -20,6 +20,10 @@ from backend.skeptic.factors import factor_check
 from backend.skeptic.skeptic import evidence_verdict
 
 
+def setUpModule():
+    codegen.MODE = "direct"  # tests never call the real managed agent unless they mock it
+
+
 def prices(n=900, seed=3, drift=0.0005, vol=0.03):
     rng = np.random.default_rng(seed)
     close = 100 * np.exp(np.cumsum(rng.normal(drift, vol, n)))
@@ -223,6 +227,38 @@ class BacktestAndJudgeTests(unittest.TestCase):
         # London Liam's: nothing has 5 trades but one, so it speaks; zero-trade readings never do.
         self.assertEqual(birth.choose_main(fake_results([0, 0, 493, 0, 2, 0], [1e4, 1e4, 1798, 1e4, 10152, 1e4])), 2)
         self.assertEqual(birth.choose_main(fake_results([0, 2, 0], [1e4, 9000, 1e4])), 1)
+
+    def test_managed_agent_code_is_verified_locally(self):
+        from backend.backtester import managed
+        with mock.patch.object(managed, "write_code", return_value=(HONEST, {"via": "managed"})), \
+             mock.patch.object(codegen, "write_code", side_effect=AssertionError("direct path used")):
+            out = codegen.code_and_positions(RULES, prices(400), "1d", [{"fast": "20"}],
+                                             save_dir=tempfile.mkdtemp(), mode="managed")
+        self.assertEqual(out["author"]["via"], "managed")
+        self.assertTrue(out["author"]["passed_local_checks"])
+
+    def test_managed_agent_failure_or_bad_code_falls_back_to_direct(self):
+        from backend.backtester import managed
+        for behaviour in [TimeoutError("too slow"), (PEEK, {"via": "managed"})]:
+            kwargs = {"side_effect": behaviour} if isinstance(behaviour, Exception) else {"return_value": behaviour}
+            with mock.patch.object(managed, "write_code", **kwargs), \
+                 mock.patch.object(codegen, "write_code", return_value=HONEST) as direct:
+                out = codegen.code_and_positions(RULES, prices(400), "1d", [{"fast": "20"}],
+                                                 save_dir=tempfile.mkdtemp(), mode="managed")
+            self.assertEqual(direct.call_count, 1)
+            self.assertIsNone(out["problem"])
+            self.assertTrue(out["author"]["via"].startswith("direct"))
+
+    def test_sample_fits_an_inline_file(self):
+        from backend.backtester import managed
+        idx = pd.date_range("2020-01-01", periods=60000, freq="5min", tz="UTC")
+        df = pd.DataFrame({"open": 65000.12, "high": 65010.5, "low": 64990.25, "close": 65001.75,
+                           "volume": 12.345678}, index=idx)
+        text = managed.sample_csv(df)
+        self.assertLessEqual(len(text.encode()), managed.MAX_CSV_BYTES)
+        self.assertTrue(text.rstrip().endswith(text.rstrip().splitlines()[-1]))
+        last_ts = int(text.rstrip().splitlines()[-1].split(",")[0])
+        self.assertEqual(last_ts, int(idx[-1].timestamp()))
 
     def test_saved_code_is_reused_without_asking_neon(self):
         folder = Path(tempfile.mkdtemp())

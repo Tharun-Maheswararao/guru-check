@@ -2,7 +2,12 @@
 
 Neon writes one generate_positions(df, reading) for the whole strategy, with a branch for every
 meaning of every vague term, so each reading of the rules is the same code with a different switch.
-If the code crashes or peeks at future bars, Neon gets the error and one more try.
+
+BACKTEST_AGENT=managed (default): Neon runs as a Google managed agent (managed.py) that writes the
+code and tests it in its own sandbox until our check script passes. If it fails, times out, or its
+code fails our local checks, the direct path takes over.
+BACKTEST_AGENT=direct: one Neon model call writes the code; if the code crashes or peeks at future
+bars, Neon gets the error and one more try.
 """
 
 import json
@@ -21,6 +26,7 @@ from backend import llm
 from backend.config import DATA_DIR, model_settings
 
 NEON = model_settings("NEON", "gemini-4-neon")
+MODE = os.environ.get("BACKTEST_AGENT", "managed")
 RUNNER = Path(__file__).with_name("sandbox_runner.py")
 TIMEOUT_S = 300
 
@@ -77,16 +83,21 @@ def extract_code(text: str) -> str:
     return code.strip() + "\n"
 
 
-def write_code(rules: dict, df: pd.DataFrame, timeframe: str,
-               previous: tuple[str, str] | None = None) -> str:
-    """Ask Neon for the strategy code. previous = (code, problem) asks it to fix an earlier attempt."""
+def build_spec(rules: dict, df: pd.DataFrame, timeframe: str) -> str:
+    """The function spec both paths give Neon: the rules, the data, and the hard requirements."""
     keys = "\n".join(f"    #   {json.dumps(v['term'])}: one of {json.dumps(v['meanings'])}"
                      for v in rules.get("vague_terms", [])) or "    #   (no vague terms: reading is {})"
     shown = {k: rules[k] for k in ["timeframe", "entry", "exit", "stop_loss", "filters", "vague_terms"]}
     shown["market"] = rules["market"]
-    prompt = PROMPT.format(rules=json.dumps(shown, indent=1), bars=len(df), market=rules["market"]["tested_on"],
-                           timeframe=timeframe, start=df.index[0].date(), end=df.index[-1].date(),
-                           reading_keys=keys)
+    return PROMPT.format(rules=json.dumps(shown, indent=1), bars=len(df), market=rules["market"]["tested_on"],
+                         timeframe=timeframe, start=df.index[0].date(), end=df.index[-1].date(),
+                         reading_keys=keys)
+
+
+def write_code(rules: dict, df: pd.DataFrame, timeframe: str,
+               previous: tuple[str, str] | None = None) -> str:
+    """Ask Neon for the strategy code. previous = (code, problem) asks it to fix an earlier attempt."""
+    prompt = build_spec(rules, df, timeframe)
     if previous:
         prompt += FIX.format(code=previous[0], problem=previous[1][:3000])
 
@@ -142,7 +153,8 @@ def problem_with(positions: list, report: dict) -> str | None:
 
 
 def code_and_positions(rules: dict, df: pd.DataFrame, timeframe: str, readings: list[dict],
-                       attempts: int = 2, save_dir: Path | None = None) -> dict:
+                       attempts: int = 2, save_dir: Path | None = None, mode: str | None = None,
+                       notify=lambda detail: None) -> dict:
     """Neon writes the code, the sandbox runs it, and Neon fixes it once if needed.
 
     Code saved by an earlier birth of the same strategy is reused if it still passes every check,
@@ -154,8 +166,28 @@ def code_and_positions(rules: dict, df: pd.DataFrame, timeframe: str, readings: 
         positions, report = run_code(code_path.read_text(), df, readings)
         if problem_with(positions, report) is None:
             return {"code": code_path.read_text(), "code_path": str(code_path), "positions": positions,
-                    "report": report, "problem": None, "reused": True}
-    code, positions, report, problem = "", [], {}, None
+                    "report": report, "problem": None, "reused": True, "author": {"via": "saved code"}}
+    code, positions, report, problem, author = "", [], {}, None, {"via": f"direct {NEON.model} call"}
+    if (mode or MODE) == "managed":
+        notify("Neon managed agent is writing and testing the code in its Google sandbox")
+        try:
+            from backend.backtester import managed
+            code, author = managed.write_code(build_spec(rules, df, timeframe), rules, df, timeframe, readings)
+            positions, report = run_code(code, df, readings)  # trust, but verify on the full history
+            problem = problem_with(positions, report)
+            author["passed_local_checks"] = problem is None
+        except Exception as e:
+            author = {"via": f"direct {NEON.model} call", "managed_agent_error": f"{type(e).__name__}: {e}"[:300]}
+            code, problem = "", None
+        if code and problem is None:
+            save_dir.mkdir(parents=True, exist_ok=True)
+            code_path.write_text(code)
+            return {"code": code, "code_path": str(code_path), "positions": positions, "report": report,
+                    "problem": None, "author": author}
+        if code:  # the agent's code failed our local checks: Neon fixes it directly
+            author = {"via": f"direct {NEON.model} call", "fixed_managed_agent_code": author,
+                      "local_check_problem": (problem or "")[:300]}
+        notify("Neon is fixing the code directly" if code else "Neon is writing the code directly")
     for _ in range(attempts):
         code = write_code(rules, df, timeframe, (code, problem) if problem else None)
         positions, report = run_code(code, df, readings)
@@ -165,4 +197,4 @@ def code_and_positions(rules: dict, df: pd.DataFrame, timeframe: str, readings: 
     save_dir.mkdir(parents=True, exist_ok=True)
     code_path.write_text(code)
     return {"code": code, "code_path": str(code_path), "positions": positions, "report": report,
-            "problem": problem}
+            "problem": problem, "author": author}

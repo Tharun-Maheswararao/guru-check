@@ -9,6 +9,11 @@ draws the portrait and saves the NPC.
 1. **backtest**
    - **Readings.** `engine.build_readings` turns the vague terms into up to 6 readings of the rules: all first meanings, all second, all third, then random mixes.
    - **Neon writes the code.** `codegen.py` has Gemini 4 Neon write one `generate_positions(df, reading)` with a branch for every meaning.
+     - **By default it's a managed agent** (`managed.py`): Google's Antigravity agent on `gemini-4-neon`, running in a Google-hosted sandbox.
+     - **The sandbox holds three files:** the most recent candles (inline files are limited to 1 MB), the readings, and our `check.py`.
+     - **The agent writes `strategy.py`, runs `check.py`, and fixes the code until it passes.** The checks are: every reading runs, no lookahead at four cut points, some trades, safe imports.
+     - **Fallback:** if the agent fails, takes over 4 minutes, or its code fails our local checks, a direct Neon call takes over. Set `BACKTEST_AGENT=direct` to skip the agent.
+     - **The record shows who wrote the code** under `code_author` in the NPC.
    - **The sandbox runs it.** `sandbox_runner.py` runs the code in a separate Python process with no environment (no API keys) and a 5 minute limit. Only numpy, pandas, math and datetime can be imported, and there's no `open`, `eval` or `exec`.
    - **Lookahead test.** Reading 0 is rerun on data cut off at six points. Every position, including the last one before the cut, must match the full run, which catches even a one-bar peek. If the code crashes, never trades or peeks, Neon gets the problem and one more try.
    - **The engine counts the money.** `engine.run_backtest` holds each signal over the next bar, so a signal never trades its own bar. It charges 0.15% per side (0.10% fee + 0.05% slippage) and computes equity, trades, win rate, drawdown and buy and hold.
