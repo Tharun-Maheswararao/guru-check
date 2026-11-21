@@ -1,0 +1,16 @@
+{
+  "_note": "File at npc_record.trades_path. Simulate reads only this. Built by backend/backtester/equity.py build_trades_file().",
+  "market": "BTC-USD",
+  "interval": "1d",
+  "start_cash": 10000,
+  "dates": ["2021-01-01", "2021-01-02"],
+  "price": [29374.15, 32127.27],
+  "equity": [10000, 10000],
+  "hold": [10000, 10937.6],
+  "random_band": {"p10": [10000, 10000], "p50": [10000, 10000], "p90": [10000, 10000]},
+  "trades": [
+    {"side": "buy", "i": 12, "date": "2021-01-13", "price": 37316.36, "rule": "RSI below 30", "timestamp_s": 252},
+    {"side": "sell", "i": 20, "date": "2021-01-21", "price": 30825.7, "rule": "RSI above 70", "timestamp_s": 301, "pnl_pct": -17.4}
+  ],
+  "pain_moment": {"i": 512, "date": "2022-06-14", "drawdown_pct": -31.0, "losing_streak": 4}
+}

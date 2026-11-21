@@ -13,7 +13,8 @@ from backend.extractor import rules as R
 from backend.extractor.extractor import build_record, extract
 from backend.matcher.matcher import match, match_link
 from backend.npc_store.store import Store
-from backend.pipeline import RebirthError, run
+from backend import pipeline
+from backend.pipeline import BacktesterNotConnected, RebirthError, birth_npc, run
 from backend.scanner import router
 from backend.scanner.scanner import LABELS, flagged_segments, scan
 from backend.watcher.watcher import clean_segments, parse_time, video_id, watch
@@ -302,6 +303,96 @@ class MatcherAndPipelineTests(unittest.TestCase):
         store = Store(self.data)
         store.save_npc({"npc_id": "npc1", "strategy_id": "abc", "source_videos": [{"url": "https://youtu.be/dQw4w9WgXcQ"}]})
         self.assertEqual(match_link(URL, store)["npc_id"], "npc1")
+
+
+def fake_backtest_and_judge(calls=None):
+    """Stand-in for Person 2: reports its steps and returns (npc_record, trades)."""
+    def finish(rules, on_step):
+        if calls is not None:
+            calls.append(rules["strategy_id"])
+        for step in ["backtest", "randoms", "judge"]:
+            on_step(step, f"{step} done")
+        record = {"npc_id": "npc-" + rules["strategy_id"][:8], "name": "Test Trader", "personality": "calm",
+                  "verdict": "Lucky", "results": {"final_balance": 12000, "max_drawdown": -20,
+                                                   "win_rate": 50, "random_percentile": 60},
+                  "trades_path": ""}
+        trades = {"dates": ["2024-01-01"], "equity": [10000], "trades": []}
+        return record, trades
+    return finish
+
+
+class BirthTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data = Path(self.tmp.name)
+        self.steps = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def on_step(self, step, detail=""):
+        self.steps.append(step)
+
+    def birth(self, url, **kw):
+        kw.setdefault("llm_json", fake_llm)
+        kw.setdefault("decide", fake_decide)
+        return birth_npc(url, self.on_step, data_dir=self.data, **kw)
+
+    def test_new_video_is_born_with_rule_fields_and_trades(self):
+        rec = self.birth(URL, backtest_and_judge=fake_backtest_and_judge())
+        order = list(dict.fromkeys(self.steps))
+        self.assertEqual(order, ["watch", "scan", "extract", "match", "backtest", "randoms", "judge", "born"])
+        saved = Store(self.data).get_npc(rec["npc_id"])
+        self.assertEqual(saved["market"], {"stated": "Bitcoin", "tested_on": "BTC-USD"})
+        self.assertEqual(saved["strategy_name"], "EMA golden cross")
+        kinds = [x["kind"] for x in saved["rules_timeline"]]
+        self.assertEqual(sorted(set(kinds)), ["claim", "entry", "exit", "stop_loss"])
+        self.assertEqual([x["timestamp_s"] for x in saved["rules_timeline"]],
+                         sorted(x["timestamp_s"] for x in saved["rules_timeline"]))
+        self.assertEqual(Store(self.data).get_trades(rec["npc_id"])["equity"], [10000])
+        self.assertEqual([n["npc_id"] for n in Store(self.data).npcs()], [rec["npc_id"]])  # trades file not listed
+
+    def test_same_link_returns_existing_npc_without_model_calls(self):
+        first = self.birth(URL, backtest_and_judge=fake_backtest_and_judge())
+        self.steps.clear()
+        again = self.birth("https://youtu.be/dQw4w9WgXcQ", llm_json=lambda *a, **k: self.fail("model call"),
+                           decide=lambda *a: self.fail("model call"),
+                           backtest_and_judge=lambda *a: self.fail("backtest"))
+        self.assertEqual(again["npc_id"], first["npc_id"])
+        self.assertEqual(self.steps, ["born"])
+
+    def test_duplicate_video_joins_the_born_npc(self):
+        calls = []
+        first = self.birth(URL, backtest_and_judge=fake_backtest_and_judge(calls))
+
+        def llm2(prompt, youtube_url=None, **_):
+            out = fake_llm(prompt, youtube_url)
+            if not youtube_url:
+                out["entry"] = [{"rule": "Go long on the golden cross of the 50 and 200 EMA", "timestamp_s": 50}]
+            return out
+
+        second = self.birth(URL2, llm_json=llm2, backtest_and_judge=fake_backtest_and_judge(calls))
+        self.assertEqual(second["npc_id"], first["npc_id"])
+        self.assertEqual(len(calls), 1)  # backtested once
+        urls = [v["url"] for v in Store(self.data).get_npc(first["npc_id"])["source_videos"]]
+        self.assertEqual(len(urls), 2)
+
+    def test_missing_backtester_fails_clearly_then_resumes(self):
+        original = pipeline.BACKTEST_HANDOFF
+        pipeline.BACKTEST_HANDOFF = "backend.backtester.not_there_yet"
+        try:
+            with self.assertRaises(BacktesterNotConnected):
+                self.birth(URL)
+        finally:
+            pipeline.BACKTEST_HANDOFF = original
+        self.assertEqual(self.steps[-1], "backtest")
+        self.steps.clear()
+        rec = self.birth(URL, llm_json=lambda *a, **k: self.fail("should reuse saved rules"),
+                         decide=lambda *a: self.fail("should reuse saved rules"),
+                         backtest_and_judge=fake_backtest_and_judge())
+        self.assertEqual(self.steps[0], "match")
+        self.assertEqual(self.steps[-1], "born")
+        self.assertTrue(Store(self.data).get_npc(rec["npc_id"]))
 
 
 class EvalTests(unittest.TestCase):

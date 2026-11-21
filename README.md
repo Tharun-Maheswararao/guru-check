@@ -74,6 +74,15 @@ Run Person 1's pipeline on one video (Watcher, Scanner, Extractor, Matcher). Out
 Every model request is logged to `data/logs/llm_calls.jsonl`, and the pipeline prints how many it
 sent. A 20 minute video takes about 9 requests.
 
+Run the web app (library, NPC room, Simulate) with real births:
+
+```bash
+.venv/bin/python -m uvicorn backend.api.server:app --port 8000   # then open http://localhost:8000
+```
+
+Births need Person 2's `backend/backtester/birth.py` (see `backend/backtester/README.md`); until then
+add `MOCK_BIRTH=1` and seed fake NPCs with `python3 frontend/mock_npcs.py`.
+
 Tests run offline with fake model calls:
 
 ```bash
