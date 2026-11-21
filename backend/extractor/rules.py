@@ -34,6 +34,10 @@ def strategy_id(record: dict) -> str:
         [normalize_text(v["term"]), sorted(normalize_text(m) for m in v.get("meanings", []))]
         for v in record.get("vague_terms", [])
     )
+    if record.get("testable") is False:
+        # Untestable videos often have no rules at all, so their rules hash alike. Tie the id to the
+        # video so two vague videos never collapse into one NPC.
+        payload["videos"] = sorted(str(v.get("url", "")) for v in record.get("source_videos", []))
     return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 

@@ -299,6 +299,15 @@ class MatcherAndPipelineTests(unittest.TestCase):
         self.assertEqual(counter.requests, [3])
         self.assertEqual(len(decision["candidates"]), 3)
 
+    def test_two_vague_videos_never_share_an_npc(self):
+        store = Store(self.data)
+        vague = {"testable": False, "untestable_reason": "No trading rules were found in the video."}
+        first = build_record(vague, {"url": URL}, [])
+        second = build_record(vague, {"url": URL2}, [])
+        self.assertNotEqual(first["strategy_id"], second["strategy_id"])
+        store.save_strategy(first)
+        self.assertEqual(match(second, store, decide=lambda *a: self.fail("no comparison"))["action"], "new")
+
     def test_same_link_finds_born_npc(self):
         store = Store(self.data)
         store.save_npc({"npc_id": "npc1", "strategy_id": "abc", "source_videos": [{"url": "https://youtu.be/dQw4w9WgXcQ"}]})
@@ -419,6 +428,10 @@ class EvalTests(unittest.TestCase):
             report = evaluate(videos, Path(tmp), baseline=True, decide=fake_decide, llm_json=fake_llm,
                               llm_text=lambda *a, **k: "It returned 340% since 2018.")
         m = report["metrics"]
+        with tempfile.TemporaryDirectory() as tmp:  # parallel preparation gives the same metrics
+            parallel = evaluate(videos, Path(tmp), baseline=True, decide=fake_decide, llm_json=fake_llm,
+                                llm_text=lambda *a, **k: "It returned 340% since 2018.", workers=2)
+        self.assertEqual(parallel["metrics"], m)
         self.assertEqual(m["pipeline_errors"]["num"], 0)
         self.assertEqual(m["duplicates_matched"]["value"], 1.0)
         self.assertEqual(m["false_refusals"]["value"], 0.0)

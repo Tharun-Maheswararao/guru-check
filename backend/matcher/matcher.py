@@ -85,7 +85,7 @@ def match(rules: dict, store: Store, decide: Callable = llm.decide,
         return {"action": "join", "reason": reason, "strategy_id": target_sid,
                 "npc_id": npc["npc_id"] if npc else None, "score": score, "candidates": candidates}
 
-    if any(s["strategy_id"] == sid for s in saved):
+    if rules["testable"] and any(s["strategy_id"] == sid for s in saved):
         return joined(sid, "same_rules", 1.0, [])
 
     candidates = []

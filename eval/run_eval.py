@@ -27,13 +27,17 @@ import itertools
 import json
 import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from backend import llm
 from backend.config import DATA_DIR
 from backend.extractor.rules import RULE_KEYS
 from backend.matcher.matcher import describe
+from backend.extractor.extractor import extract
 from backend.pipeline import run
+from backend.scanner.scanner import scan
+from backend.watcher.watcher import canonical_url, video_id, watch
 
 EVAL_DIR = Path(__file__).resolve().parent
 GROUND_TRUTH_DIR = EVAL_DIR / "ground_truth"
@@ -85,8 +89,43 @@ def rule_scores(extracted: dict, truth: dict, decide=llm.decide) -> dict:
     }
 
 
+def prepare(url: str, data_dir: Path, llm_json, decide) -> None:
+    """Watch, scan and extract one video into the same cache files the pipeline uses.
+
+    These steps don't depend on other videos, so they can run in parallel. Matching can't: it
+    compares each video with the ones before it, so it stays in the ordered loop.
+    """
+    run_dir = Path(data_dir) / "runs" / video_id(url)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    stages = [("watch", lambda prev: watch(canonical_url(url), llm_json=llm_json)),
+              ("scan", lambda prev: scan(prev, decide=decide)),
+              ("rules", lambda prev: extract(prev, llm_json=llm_json))]
+    prev = None
+    for name, fn in stages:
+        path = run_dir / f"{name}.json"
+        if path.exists():
+            prev = json.loads(path.read_text())
+            continue
+        prev = fn(prev)
+        path.write_text(json.dumps(prev, indent=2))
+
+
 def evaluate(videos: list[dict], data_dir: Path, baseline: bool = False, decide=llm.decide,
-             llm_json=llm.hydrogen_json, llm_text=llm.hydrogen_text) -> dict:
+             llm_json=llm.hydrogen_json, llm_text=llm.hydrogen_text, workers: int = 1,
+             log=lambda _: None) -> dict:
+    baselines = {}
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            jobs = {pool.submit(prepare, row["url"], data_dir, llm_json, decide): row for row in videos}
+            if baseline:
+                bjobs = {pool.submit(llm_text, BASELINE_PROMPT, youtube_url=row["url"]): row for row in videos}
+            for job in as_completed(jobs):
+                row = jobs[job]
+                log(f"prepared {row.get('video_id') or row['url']}" + (f" (error: {job.exception()})" if job.exception() else ""))
+            if baseline:
+                for job in as_completed(bjobs):
+                    if not job.exception():
+                        baselines[bjobs[job]["url"]] = job.result()
     per_video = []
     for row in videos:
         vid = row.get("video_id") or row["url"]
@@ -104,7 +143,12 @@ def evaluate(videos: list[dict], data_dir: Path, baseline: bool = False, decide=
         item["expected_testable"] = _truthy(row.get("expected_testable", ""))
         item["duplicate_group"] = (row.get("duplicate_group") or "").strip()
         if baseline:
-            answer = llm_text(BASELINE_PROMPT, youtube_url=row["url"])
+            answer = baselines.get(row["url"])
+            if answer is None:
+                try:
+                    answer = llm_text(BASELINE_PROMPT, youtube_url=row["url"])
+                except Exception as e:
+                    answer = f"(baseline call failed: {type(e).__name__})"
             item["baseline"] = {"answer": answer, "states_numbers": bool(NUMBER_CLAIM.search(answer))}
         per_video.append(item)
     return {"metrics": metrics(per_video), "videos": per_video}
@@ -147,6 +191,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--baseline", action="store_true")
     parser.add_argument("--fresh", action="store_true", help="clear the eval library and cached runs first")
+    parser.add_argument("--workers", type=int, default=5, help="videos prepared in parallel")
     args = parser.parse_args()
 
     data_dir = DATA_DIR / "eval"
@@ -155,7 +200,8 @@ def main() -> None:
     videos = load_videos()
     if not videos:
         raise SystemExit("eval/videos.csv has no videos yet.")
-    report = evaluate(videos, data_dir, baseline=args.baseline)
+    report = evaluate(videos, data_dir, baseline=args.baseline, workers=args.workers,
+                      log=lambda m: print(m, flush=True))
     data_dir.mkdir(parents=True, exist_ok=True)
     (data_dir / "results.json").write_text(json.dumps(report, indent=2))
 
